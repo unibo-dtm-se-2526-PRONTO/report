@@ -5,12 +5,12 @@ has_children: false
 nav_order: 1
 ---
 
-# Project title
+# Pronto
 
 ### Authors
 
-- [Giovanni Ciatto](mailto:giovanni.ciatto@unibo.it)
-- [Davide Domini](mailto:davide.domini@unibo.it)
+- [Sara Ladisa](mailto:sara.ladisa@studio.unibo.it)
+- [Giulio Salotti](mailto:giulio.salotti@studio.unibo.it)
 
 ## Abstract
 
