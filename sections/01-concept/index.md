@@ -10,7 +10,7 @@ Pronto is a web application that digitizes and automates the telephone-based hel
 
 ## Type of product
 
-Pronto is a client-server web application, structured as a 3-tier system: a single-page frontend (shared by students and employees), a REST API backend encapsulating booking, FAQ-matching, authentication, and notification logic, and a relational database for persistence. No native mobile application, CLI, or library is planned: every actor accesses the system exclusively through a web browser.
+Pronto is a client-server web application, structured as a 3-tier system: a single-page frontend (shared by students and employees), an API backend encapsulating booking, FAQ-matching, authentication, and notification logic, and a relational database for persistence. No native mobile application, CLI, or library is planned: every actor accesses the system exclusively through a web browser.
 
 ## Use case collection
 
@@ -28,19 +28,19 @@ Students and employees are geographically distributed: they access Pronto from a
 ### When and how frequently do they interact with the system
 
 - Students interact **sporadically and on demand**, whenever they have a specific question or need (e.g. around enrollment or internship-search periods), rather than routinely. Usage is expected to be bursty, concentrated around office-specific deadlines.
-- Employees interact **regularly, as part of their daily work routine**: they set up their availability once per period (e.g. weekly), and then respond to booking requests as they arrive during working hours.
+- Employees interact **regularly, as part of their daily work routine**: they set up their availability once per period (e.g. weekly), and then handle the resulting appointments as they arrive during working hours.
 
 ### How do they interact with the system, and with which devices
 
-Both roles interact through the same responsive single-page web application, from desktop or mobile browsers. A student browses an office's available time slots, selects one, and attaches a free-text question to the booking. An employee reviews incoming requests, together with an automatically suggested FAQ answer, and can respond directly from the same interface. E-mail notifications complement the web interface, informing users of state changes (question answered, appointment confirmed/cancelled) without requiring them to keep the application open.
+Both roles interact through the same responsive single-page web application, from desktop or mobile browsers. A student first asks a free-text question about a given office; the FAQ-matching engine suggests the best-matching answer drawn from past questions, and the student decides whether it resolves their request. If it does, no appointment is created. Otherwise, the student browses that office's available time slots, selects one, and books it, with the original question attached for the handling employee. E-mail notifications complement the web interface, informing users of state changes (a new appointment being booked, or an existing one being cancelled or completed) without requiring them to keep the application open.
 
 ### Does the system need to store user data
 
 Yes. Pronto persists:
 
 - **Identity data**: for students, name, surname, student ID (matricola), course of study, and institutional e-mail; for employees, name, surname, office, and working shifts. Passwords are stored hashed, never in clear text.
-- **Booking data**: appointments, each associated with a time slot, an office, a free-text question/note from the student, and a lifecycle status (booked, answered, confirmed, cancelled).
-- **Knowledge base data**: a FAQ collection built from real, anonymised historical helpdesk questions and answers, used to automatically suggest a response before a booking is confirmed.
+- **Booking data**: appointments, each associated with a time slot, an office, a free-text question/note from the student, and a lifecycle status (booked, cancelled, or completed).
+- **Knowledge base data**: a FAQ collection built from real, anonymised historical helpdesk questions and answers, used to automatically suggest an answer to a student's question before any appointment is created.
 
 All persistent data lives centrally, in a single relational database on the backend side; clients only keep transient UI/session state and never store sensitive data locally.
 
