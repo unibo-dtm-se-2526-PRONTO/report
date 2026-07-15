@@ -1,0 +1,36 @@
+@startuml use-case-diagram
+left to right direction
+
+actor Student
+actor Employee
+
+rectangle Pronto {
+    usecase "Register / Login" as UC1
+    usecase "Declare office & shifts" as UC2
+    usecase "Update availability" as UC3
+    usecase "Ask a question" as UC4
+    usecase "Receive FAQ answer" as UC5
+    usecase "Browse available slots" as UC6
+    usecase "Book appointment" as UC7
+    usecase "Cancel appointment" as UC8
+    usecase "Mark appointment as completed" as UC9
+    usecase "Receive notifications" as UC10
+}
+
+Student --> UC1
+Student --> UC4
+Student --> UC6
+Student --> UC7
+Student --> UC8
+Student --> UC10
+
+Employee --> UC1
+Employee --> UC2
+Employee --> UC3
+Employee --> UC9
+Employee --> UC10
+
+UC4 ..> UC5 : <<include>>
+UC7 ..> UC6 : <<include>>
+UC7 ..> UC4 : <<extend>>
+@enduml

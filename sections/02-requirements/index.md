@@ -15,14 +15,14 @@ Pronto is used by two personas: the **Student**, who needs information or assist
 - **US1 (Employee) — Registration and availability.** As an employee, I want to create a profile indicating my office and working shifts, so that the system can automatically generate the bookable time slots derived from them.
     - Symmetrically to US0, the employee role is validated through the institutional e-mail domain (`@unibo.it`), rather than through manual approval by an administrator.
     - Declaring availability is a separate step from registration, so that an employee can update their shifts afterwards without having to register again.
-- **US2 (Student) — Booking an appointment.** As a student, I want to book an appointment with the appropriate office, choosing a day and time among the available slots, so that I can get help with my request. This is the core story of the system and is refined into the following sub-stories:
-    - **US2a — Slot selection.** The student picks an office and selects one of its available time slots.
-    - **US2b — Question attachment.** Before confirming, the student attaches a free-text question to the booking.
-    - **US2c — FAQ matching.** As soon as the question is submitted, the system compares it against a knowledge base of real, anonymised past questions and answers and, if a relevant match is found, proposes it to the employee as a suggested answer.
-    - **US2d — Employee response.** The employee sees the booking, the student's note, and the FAQ suggestion (if any), and can answer directly. If the student confirms that the answer resolved their request, the appointment is automatically cancelled; otherwise, it remains confirmed.
+- **US2 (Student) — Getting help.** As a student, I want to ask a question about a specific office topic, so that I can either get an immediate answer or, failing that, book an appointment with the right office. This is the core story of the system and is refined into the following sub-stories:
+    - **US2a — Ask a question.** The student picks the relevant office and submits a free-text question, before browsing any availability.
+    - **US2b — FAQ matching.** The system compares the question against a knowledge base of real, anonymised past questions and answers, and suggests the best-matching answer to the student.
+    - **US2c — Resolution without booking.** The student decides whether the suggested answer resolves their request. If it does, the flow ends there and no appointment is created.
+    - **US2d — Booking as a fallback.** If the suggested answer does not resolve the request (or no relevant match was found), the student browses the office's available time slots, selects one, and books it, with the original question attached for the handling employee.
     - **US2e — Concurrency control.** Two students must never be able to book the same time slot at the same time.
     - **US2f — Equal distribution.** As a student, I only see the available slots of an office, not the individual employee handling them, so that the system is free to distribute incoming requests evenly among the office's staff.
-    - **Notifications.** As a student or employee, I want to be notified by e-mail whenever the state of an appointment changes (question answered, appointment confirmed or cancelled, new booking received), so that I do not have to keep the application open to know the outcome of my request.
+    - **Notifications.** As a student or employee, I want to be notified by e-mail when a new appointment is booked, so that the employee is aware of it and the student has a record of it, without needing to keep the application open.
 
 An additional story was considered and consciously **descoped**: a general-purpose chatbot answering open questions about calls for applications, deadlines, study plans, or enrollment procedures by retrieving information from the university website (a Retrieval-Augmented-Generation-based assistant). Given the already broad scope of Pronto (authentication, scheduling, concurrency control, FAQ matching, staff load-balancing, notifications) and the additional risk this story would introduce — dependency on scraping an external website, unpredictable answer quality, per-query API costs — it was left out of the current iteration in favor of a smaller, better-tested feature set.
 
@@ -41,45 +41,45 @@ An additional story was considered and consciously **descoped**: a general-purpo
 
 **Availability management**
 
-- **FR4**: An employee can declare their office and working shifts; the system automatically generates the corresponding bookable time slots.
-    - *Acceptance criteria*: given a declared shift (e.g. Monday 9:00–12:00) and a fixed slot duration, the system generates a sequence of non-overlapping, contiguous slots covering the whole shift.
+- **FR4**: An employee can declare their office and working shifts; the system computes the corresponding bookable time slots from each shift, on demand, rather than storing them as separate records.
+    - *Acceptance criteria*: given a declared shift (e.g. Monday 9:00–12:00) and a fixed slot duration, browsing that office's availability yields a sequence of non-overlapping, contiguous candidate slots covering the whole shift.
 - **FR5**: An employee can update their declared shifts after registration, adding or removing availability.
-    - *Acceptance criteria*: newly added shifts generate new bookable slots; removed shifts make the corresponding, not-yet-booked slots unavailable.
+    - *Acceptance criteria*: since time slots are derived from shifts rather than stored, updating a shift immediately changes the availability computed for subsequent browsing; appointments already booked under the previous shift are unaffected.
 
-**Booking**
+**Getting help (FAQ matching and booking)**
 
-- **FR6**: A student can browse the available time slots of a given office.
-    - *Acceptance criteria*: only slots that are within a shift and not already booked are shown to the student.
-- **FR7**: A student can book an available slot, attaching a free-text question.
-    - *Acceptance criteria*: after booking, the slot is no longer offered to other students, and the appointment is created with the attached question and an initial "booked" status.
-- **FR8**: The system prevents two students from booking the same time slot concurrently.
+- **FR6**: A student can ask a question about a given office.
+    - *Acceptance criteria*: given an office and a free-text question, the request is recorded and immediately compared against the FAQ knowledge base.
+- **FR7**: The system suggests the best-matching FAQ answer for the submitted question, if a sufficiently relevant one exists.
+    - *Acceptance criteria*: given a question with at least one sufficiently similar FAQ entry, the corresponding answer is shown to the student; no suggestion is shown if no sufficiently relevant match is found.
+- **FR8**: If the student is not satisfied by the suggested answer (or none was found), they can browse the office's available time slots and book one, with the original question attached.
+    - *Acceptance criteria*: after booking, the slot is no longer offered to other students, and the appointment is created with the attached question and an initial "booked" status; no appointment is created if the student marks the suggested answer as satisfactory.
+
+**Concurrency and distribution**
+
+- **FR9**: The system prevents two students from booking the same time slot concurrently.
     - *Acceptance criteria*: when two booking requests for the same slot are issued at the same time, exactly one succeeds and the other is rejected with a clear conflict response.
-
-**FAQ matching**
-
-- **FR9**: When a booking question is submitted, the system compares it against a knowledge base of anonymised past questions and answers and, if a relevant match exists, proposes it to the employee as a suggested answer.
-    - *Acceptance criteria*: given a question sufficiently similar to an existing FAQ entry, the corresponding answer is shown to the employee alongside the booking; no suggestion is shown if no sufficiently relevant match is found.
-- **FR10**: An employee can answer a student's question directly, optionally reusing the suggested FAQ answer.
-    - *Acceptance criteria*: the employee's answer is recorded and associated with the appointment, moving it to an "answered" status.
-- **FR11**: A student can confirm whether the received answer resolved their request; if confirmed, the appointment is automatically cancelled, otherwise it remains a confirmed appointment.
-    - *Acceptance criteria*: confirming a satisfactory answer transitions the appointment to "cancelled" and frees the slot; declining it transitions the appointment to "confirmed".
-
-**Distribution**
-
-- **FR12**: The system distributes incoming appointment requests evenly among the employees of the target office.
+- **FR10**: The system distributes incoming appointment requests evenly among the employees of the target office.
     - *Acceptance criteria*: given multiple employees of the same office with open slots, new bookings are assigned so that no employee accumulates significantly more active appointments than their colleagues.
+
+**Appointment lifecycle**
+
+- **FR11**: A student can cancel a previously booked appointment.
+    - *Acceptance criteria*: given a booked appointment belonging to the authenticated student, cancelling it transitions the appointment to the "cancelled" status and frees the corresponding slot.
+- **FR12**: An employee can mark a booked appointment as completed once the corresponding meeting has taken place.
+    - *Acceptance criteria*: given a booked appointment, the handling employee can mark it completed, transitioning it to the "completed" status.
 
 **Notifications**
 
-- **FR13**: The system notifies the relevant employee by e-mail when a new appointment request is created for their office.
-- **FR14**: The system notifies the student by e-mail when their question has been answered.
-- **FR15**: The system notifies the student by e-mail when their appointment is confirmed or automatically cancelled.
+- **FR13**: The system notifies the student by e-mail confirming that their appointment has been booked.
+- **FR14**: The system notifies the relevant employee by e-mail when a new appointment is booked for their office.
+- **FR15**: The system notifies the student by e-mail if their appointment is cancelled.
     - *Acceptance criteria* (FR13–FR15): each listed lifecycle transition results in exactly one e-mail being sent to the correct recipient, containing enough context (office, date/time, question) to act on it without opening the application.
 
 ### Non-functional requirements
 
-- **NFR1 — Consistency**: the booking mechanism must guarantee that no two students ever hold a confirmed appointment on the same time slot, even under simultaneous requests.
-- **NFR2 — Responsiveness**: slot search and booking confirmation should complete within an interactively acceptable time (in the order of seconds) under normal load.
+- **NFR1 — Consistency**: the booking mechanism must guarantee that no two students ever hold a booked appointment on the same time slot, even under simultaneous requests.
+- **NFR2 — Responsiveness**: FAQ matching, slot search, and appointment booking should complete within an interactively acceptable time (in the order of seconds) under normal load.
 - **NFR3 — Security**: passwords are never stored in clear text; authenticated sessions rely on signed, expiring tokens.
 - **NFR4 — Privacy**: the FAQ knowledge base, derived from real historical helpdesk data, is anonymised before being imported, removing any information that could identify the original requester.
 - **NFR5 — Reproducibility**: the development, test, and CI environments must be reproducible across machines, so that the observed behaviour (in particular around concurrency) does not depend on who runs it or where.
@@ -106,47 +106,11 @@ An additional story was considered and consciously **descoped**: a general-purpo
 | Office | An administrative unit of the Cesena Campus (e.g. the job orientation office) that students can book appointments with. |
 | Shift | A period of time during which an employee is available to work, declared by the employee. |
 | Time slot | A fixed-duration, bookable unit of time derived from an employee's shift. |
-| Appointment | The booking of a time slot by a student, together with the attached question and its lifecycle status. |
+| Appointment | The booking of a time slot by a student, together with the attached question and its lifecycle status (booked, cancelled, or completed). |
 | Matricola | The Italian term for a student's university identification number. |
 | FAQ | An anonymised question/answer pair from the historical helpdesk dataset, used to automatically suggest answers. |
 | Match | The outcome of comparing a student's question against the FAQ collection, together with a relevance score. |
 
 ## Use-case diagram
 
-```plantuml
-@startuml
-left to right direction
-
-actor Student
-actor Employee
-
-rectangle Pronto {
-    usecase "Register / Login" as UC1
-    usecase "Declare office & shifts" as UC2
-    usecase "Update availability" as UC3
-    usecase "Browse available slots" as UC4
-    usecase "Book appointment" as UC5
-    usecase "Attach question" as UC6
-    usecase "Receive FAQ suggestion" as UC7
-    usecase "Answer booking" as UC8
-    usecase "Confirm / reject answer" as UC9
-    usecase "Receive notifications" as UC10
-}
-
-Student --> UC1
-Student --> UC4
-Student --> UC5
-Student --> UC9
-Student --> UC10
-
-Employee --> UC1
-Employee --> UC2
-Employee --> UC3
-Employee --> UC8
-Employee --> UC10
-
-UC5 ..> UC6 : <<include>>
-UC5 ..> UC7 : <<include>>
-UC8 ..> UC7 : <<include>>
-@enduml
-```
+<p align="center"><img src="assets/use-case-diagram.svg" alt="Use case diagram"></p>
