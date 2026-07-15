@@ -1,0 +1,13 @@
+@startuml
+
+skinparam shadowing false
+
+[*] --> Booked : student books an available slot
+
+Booked --> Cancelled : student withdraws
+Booked --> Completed : staff member marks\nthe meeting as concluded
+
+Cancelled --> [*]
+Completed --> [*]
+
+@enduml

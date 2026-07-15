@@ -1,0 +1,16 @@
+@startuml layered-diagram 
+
+package "Presentation layer" {
+}
+package "Application layer" {
+}
+package "Data access layer" {
+}
+database "Persistence layer" {
+}
+
+"Presentation layer" --> "Application layer" 
+"Application layer" --> "Data access layer" 
+"Data access layer" --> "Persistence layer"
+@enduml
+

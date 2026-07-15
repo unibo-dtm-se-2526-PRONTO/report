@@ -1,0 +1,38 @@
+@startuml sequence-main-flow
+actor Student
+participant "SPA (Vue)" as spa
+participant "Routes" as routes
+participant "FaqMatchingService" as faqsvc
+participant "FaqRepository" as faqrepo
+participant "BookingService" as booksvc
+participant "AppointmentRepository" as apptrepo
+database "PostgreSQL" as db
+participant "Resend" as mail
+
+Student -> spa : ask question
+spa -> routes : POST /inquiries
+routes -> faqsvc : match(question)
+faqsvc -> faqrepo : searchByRelevance(question)
+faqrepo -> db : full-text query
+db --> faqrepo : ranked FAQs
+faqrepo --> faqsvc : candidates
+faqsvc --> routes : matches with scores
+routes --> spa : matches
+
+alt relevant match found
+  spa --> Student : show FAQ answer
+else no relevant match
+  spa --> Student : propose booking
+  Student -> spa : select office and slot
+  spa -> routes : POST /appointments
+  routes -> booksvc : book(student, office, slot)
+  booksvc -> apptrepo : create(appointment)
+  apptrepo -> db : INSERT (transactional)
+  db --> apptrepo : ok
+  apptrepo --> booksvc : appointment
+  booksvc -> mail : send confirmation email
+  booksvc --> routes : appointment
+  routes --> spa : 201 Created
+  spa --> Student : booking confirmed
+end
+@enduml
