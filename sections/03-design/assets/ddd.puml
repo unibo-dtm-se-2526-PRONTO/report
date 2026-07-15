@@ -1,0 +1,45 @@
+@startuml domain-model
+skinparam packageStyle cloud
+skinparam shadowing false
+skinparam rectangle {
+  BackgroundColor #FFF3B0
+  BorderColor black
+}
+skinparam package {
+  BackgroundColor #BFD7F2
+  BorderColor #3A6EA5
+  FontStyle bold
+}
+
+package "Booking Context" {
+  rectangle Appointment
+  rectangle Office
+  rectangle TimeSlot
+  rectangle AppointmentStatus
+
+  Appointment --> TimeSlot
+  Appointment --> Office
+  Appointment --> AppointmentStatus
+}
+
+package "Support Context" {
+  rectangle Faq
+  rectangle Category
+  rectangle Match
+
+  Faq --> Category
+  Match --> Faq
+}
+
+package "Identity Context" {
+  rectangle User
+  rectangle Role
+  rectangle Credentials
+
+  User --> Role
+  User --> Credentials
+}
+
+Appointment ..> User : references
+@enduml
+

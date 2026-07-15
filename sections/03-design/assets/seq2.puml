@@ -1,0 +1,27 @@
+@startuml sequence-concurrent-booking
+actor "Student A" as A
+actor "Student B" as B
+participant "Routes" as routes
+participant "BookingService" as booksvc
+participant "AppointmentRepository" as apptrepo
+database "PostgreSQL" as db
+
+A -> routes : POST /appointments (slot S)
+B -> routes : POST /appointments (slot S)
+routes -> booksvc : book(A, office, S)
+routes -> booksvc : book(B, office, S)
+
+booksvc -> apptrepo : create(appointment A)
+apptrepo -> db : BEGIN; INSERT slot S
+db --> apptrepo : ok (unique constraint satisfied)
+apptrepo --> booksvc : appointment
+booksvc --> routes : appointment
+routes --> A : 201 Created
+
+booksvc -> apptrepo : create(appointment B)
+apptrepo -> db : BEGIN; INSERT slot S
+db --> apptrepo : unique constraint violation
+apptrepo --> booksvc : SlotUnavailableError
+booksvc --> routes : conflict
+routes --> B : 409 Conflict
+@enduml

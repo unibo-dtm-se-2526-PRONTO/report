@@ -1,0 +1,40 @@
+@startuml components-diagram 
+
+skinparam componentStyle rectangle
+skinparam shadowing false
+
+package "Presentation layer" {
+  [Single-Page Application] as SPA
+}
+
+package "Logic layer" {
+
+  package "Application Layer" {
+    [Routes]
+    [Services]
+    [Repositories]
+  }
+
+  package "Data Access Layer" {
+    [Object-Relational Mapper] as ORM
+  }
+
+  [Routes] --> [Services]
+  [Services] --> [Repositories]
+  [Repositories] --> [ORM]
+}
+
+package "Data Layer" {
+  [Database]
+}
+
+interface "Application API" as API
+interface "Query interface" as Query
+
+API - [Routes]
+SPA ..> API
+
+Query - [Database]
+[ORM] ..> Query
+
+@enduml

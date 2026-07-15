@@ -1,0 +1,83 @@
+@startuml class-diagram
+skinparam classAttributeIconSize 0
+hide empty members
+
+
+package "Identity Context" {
+  class User <<entity>> {
+    id : UUID
+    email : string
+    fullName : string
+    role : Role
+    credentials : Credentials
+    authenticate(password) : bool
+  }
+
+  enum Role <<value object>> {
+    STUDENT
+    STAFF
+    }
+    
+  class Credentials <<value object>> {
+    passwordHash : string
+    createdAt : datetime
+  }
+}
+
+package "Booking Context" {
+  class Appointment <<aggregate root>> {
+    id : UUID
+    status : AppointmentStatus
+    slot : TimeSlot
+    book()
+    cancel()
+    complete()
+  }
+
+  class Office <<entity>> {
+    id : UUID
+    name : string
+    description : string
+  }
+
+  class TimeSlot <<value object>> {
+    date : date
+    startTime : time
+    endTime : time
+  }
+
+  enum AppointmentStatus <<value object>> {
+    BOOKED
+    CANCELLED
+    COMPLETED
+  }
+}
+
+package "Support Context" {
+  class Faq <<entity>> {
+    id : UUID
+    question : string
+    answer : string
+    category : Category
+  }
+
+  enum Category <<value object>> {
+    ENROLLMENT
+    FEES
+    EXAMS
+    SCHEDULING
+    OTHER
+  }
+
+  class Match <<value object>> {
+    faq : Faq
+    score : float
+  }
+}
+
+Appointment "1" *-- "1" TimeSlot
+Appointment "*" --> "1" Office : at
+Appointment "*" --> "1" User : bookedBy
+Appointment "*" --> "1" User : handledBy
+Match "*" --> "1" Faq
+@enduml
