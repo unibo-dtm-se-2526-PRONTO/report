@@ -15,7 +15,7 @@ package "Identity Context" {
 
   enum Role <<value object>> {
     STUDENT
-    STAFF
+    EMPLOYEE
     }
     
   class Credentials <<value object>> {

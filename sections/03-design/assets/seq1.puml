@@ -1,38 +1,31 @@
-@startuml sequence-main-flow
-actor Student
-participant "SPA (Vue)" as spa
+@startuml seq1
+actor Student as student
 participant "Routes" as routes
 participant "FaqMatchingService" as faqsvc
 participant "FaqRepository" as faqrepo
 participant "BookingService" as booksvc
-participant "AppointmentRepository" as apptrepo
-database "PostgreSQL" as db
-participant "Resend" as mail
+database "Database" as db
 
-Student -> spa : ask question
-spa -> routes : POST /inquiries
-routes -> faqsvc : match(question)
-faqsvc -> faqrepo : searchByRelevance(question)
-faqrepo -> db : full-text query
-db --> faqrepo : ranked FAQs
-faqrepo --> faqsvc : candidates
-faqsvc --> routes : matches with scores
-routes --> spa : matches
+student -> routes : POST /questions (office, question)
+routes -> faqsvc : match(office, question)
+faqsvc -> faqrepo : findByOffice(office)
+faqrepo -> db : SELECT faqs
+db --> faqrepo : faqs
+faqrepo --> faqsvc : faqs
+faqsvc --> routes : Match(answer, score) or none
+routes --> student : suggested answer (if any)
 
-alt relevant match found
-  spa --> Student : show FAQ answer
-else no relevant match
-  spa --> Student : propose booking
-  Student -> spa : select office and slot
-  spa -> routes : POST /appointments
-  routes -> booksvc : book(student, office, slot)
-  booksvc -> apptrepo : create(appointment)
-  apptrepo -> db : INSERT (transactional)
-  db --> apptrepo : ok
-  apptrepo --> booksvc : appointment
-  booksvc -> mail : send confirmation email
+alt answer resolves the request
+  student -> routes : mark as satisfactory
+  note right : flow ends, no appointment created
+else answer not satisfactory (or no match found)
+  student -> routes : GET /offices/{office}/availability
+  routes --> student : available time slots
+  student -> routes : POST /appointments (slot, question)
+  routes -> booksvc : book(student, office, slot, question)
+  booksvc -> db : insert appointment
+  db --> booksvc : ok
   booksvc --> routes : appointment
-  routes --> spa : 201 Created
-  spa --> Student : booking confirmed
+  routes --> student : booking confirmed
 end
 @enduml

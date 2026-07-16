@@ -13,13 +13,13 @@ skinparam package {
 
 package "Booking Context" {
   rectangle Appointment
+  rectangle Shift
   rectangle Office
   rectangle TimeSlot
-  rectangle AppointmentStatus
 
-  Appointment --> TimeSlot
+  Shift ..> TimeSlot : expands into
+  Appointment --> TimeSlot : occupies
   Appointment --> Office
-  Appointment --> AppointmentStatus
 }
 
 package "Support Context" {
@@ -40,6 +40,7 @@ package "Identity Context" {
   User --> Credentials
 }
 
-Appointment ..> User : references
+Appointment ..> User : booked by / handled by
+Shift ..> User : declared by
 @enduml
 

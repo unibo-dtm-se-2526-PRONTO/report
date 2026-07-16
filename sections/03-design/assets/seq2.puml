@@ -1,4 +1,4 @@
-@startuml sequence-concurrent-booking
+@startuml seq2
 actor "Student A" as A
 actor "Student B" as B
 participant "Routes" as routes
@@ -11,17 +11,29 @@ B -> routes : POST /appointments (slot S)
 routes -> booksvc : book(A, office, S)
 routes -> booksvc : book(B, office, S)
 
-booksvc -> apptrepo : create(appointment A)
-apptrepo -> db : BEGIN; INSERT slot S
+booksvc -> apptrepo : create(A, employee=E1, slot=S)
+apptrepo -> db : BEGIN; INSERT (E1, S)
 db --> apptrepo : ok (unique constraint satisfied)
 apptrepo --> booksvc : appointment
 booksvc --> routes : appointment
-routes --> A : 201 Created
+routes --> A : 201 Created (assigned to E1)
 
-booksvc -> apptrepo : create(appointment B)
-apptrepo -> db : BEGIN; INSERT slot S
+booksvc -> apptrepo : create(B, employee=E1, slot=S)
+apptrepo -> db : BEGIN; INSERT (E1, S)
 db --> apptrepo : unique constraint violation
 apptrepo --> booksvc : SlotUnavailableError
-booksvc --> routes : conflict
-routes --> B : 409 Conflict
+
+booksvc -> apptrepo : create(B, employee=E2, slot=S)
+apptrepo -> db : BEGIN; INSERT (E2, S)
+db --> apptrepo : ok (unique constraint satisfied)
+apptrepo --> booksvc : appointment
+booksvc --> routes : appointment
+routes --> B : 201 Created (assigned to E2)
+
+note over booksvc, db
+  If every employee covering slot S had already
+  been taken, the last retry would also violate
+  the uniqueness constraint, and the BookingService
+  would report a 409 Conflict to the client instead.
+end note
 @enduml
