@@ -10,6 +10,7 @@ rectangle Pronto {
     usecase "Update availability" as UC3
     usecase "Ask a question" as UC4
     usecase "Receive FAQ answer" as UC5
+    usecase "Resolve without booking" as UC5a
     usecase "Browse available slots" as UC6
     usecase "Book appointment" as UC7
     usecase "Cancel appointment" as UC8
@@ -19,6 +20,7 @@ rectangle Pronto {
 
 Student --> UC1
 Student --> UC4
+Student --> UC5a
 Student --> UC6
 Student --> UC7
 Student --> UC8
@@ -31,6 +33,7 @@ Employee --> UC9
 Employee --> UC10
 
 UC4 ..> UC5 : <<include>>
+UC5 ..> UC5a : <<extend>>
 UC7 ..> UC6 : <<include>>
 UC7 ..> UC4 : <<extend>>
 @enduml

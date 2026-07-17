@@ -23,12 +23,11 @@ This choice reflects the actual communication pattern of the system: every inter
 
 <p align="center"><img src="assets/layered-diagram.svg" alt="Layered Architecture Diagram"></p>
 
-
 We considered and discarded the following alternatives:
 
 - **Event-based**: it implies asynchronous, decoupled communication through a publish/subscribe mechanism, where producers are unaware of their consumers, which is not suitable.
 - **Object-based**: it implies communication through remote invocation of methods on distributed objects. Pronto's components communicate through explicit request/response message exchanges, not through remote method calls on shared objects.
-- **Shared dataspace**:Pronto does rely on a database, but it is accessed by a single component (the backend) for persistence.
+- **Shared dataspace**: Pronto does rely on a database, but it is accessed by a single component (the backend).
 
 ### Concrete architecture
 
@@ -49,6 +48,7 @@ The four logical layers map onto the three tiers as follows: the presentation la
 - **Routes**: expose the API endpoints, parse and validate incoming requests, and delegate to the appropriate service;
 - **Services**: implement the business rules;
 - **Repositories**: mediate between services and the data access layer, encapsulating domain-specific query logic behind a stable interface and keeping services decoupled from the underlying persistence technology;
+- **NotificationService**: reacts to lifecycle events raised by the services (an appointment being booked or cancelled) and delivers the corresponding e-mail through the external e-mail provider;
 - **Data Access Layer (ORM):** It translates domain objects into relational operations and vice versa: it implements the ORM pattern, allowing the logic tier to work with objects instead of hand-written queries.
 - **Data tier:** It durably stores all application state: appointments, offices, users, shifts, FAQ entries and appointments.
 
@@ -63,14 +63,13 @@ Pronto's infrastructure comprises the following components:
 - **Clients (N instances)**: each user, either a student or an employee, interacts with the system through a web browser running the single-page application. The number of client instances therefore is equal to the number of concurrently connected users.
 - **Application server (1 instance)**: a single instance of the backend serves the API consumed by clients.
 - **Database server (1 instance)**: a single database instance persists all application data.
-- **Vector index (embedded)**: the Chroma vector store used for semantic FAQ matching runs embedded in the application server's process, alongside the PostgreSQL full-text search it complements; it is not a separately deployed component.
 - **External e-mail service**: notification e-mails are delivered through a third-party provider, reached through its public API.
 
 ### Distribution of components
 
 Clients and server are geographically distributed: clients run wherever users are, and reach the server over the public Internet through secure connections.
-The presentation component is distributed as static content: it is served from the same host that runs the backend, and then executes entirely in the user's browser.
-Backend and database sit on the same host, attached to a private network: only the backend can connect to it. The Chroma vector index runs in-process with the backend, so it shares its host and lifecycle rather than being distributed separately.
+Backend and database sit on the same host, attached to a private network: only the backend can connect to it.
+
 The e-mail service resides in a third-party datacenter, reached by the backend through outbound calls; its physical location is outside our control, since the interaction happens exclusively through its public API.
 
 ### Naming and discovery
@@ -100,8 +99,8 @@ Within the Identity context, **User** is an entity and the aggregate root of the
 
 **Repositories and services**
 
- Each aggregate root is paired with a repository, modelling an abstract collection of aggregates: ShiftRepository, AppointmentRepository, FaqRepository and UserRepository. Two domain services capture operations that do not naturally belong to any single entity: **FaqMatchingService**, which compares an inquiry against the FAQ collection and produces Match results,
-and **BookingService**, which spans across the Shift, Office, Appointment and User concepts.
+ Each aggregate root is paired with a repository, modelling an abstract collection of aggregates: ShiftRepository, AppointmentRepository, FaqRepository and UserRepository. Three domain services capture operations that do not naturally belong to any single entity: **FaqMatchingService**, which compares an inquiry against the FAQ collection and produces Match results,
+**BookingService**, which spans across the Shift, Office, Appointment and User concepts, and **NotificationService**, which reacts to the AppointmentBooked and AppointmentCancelled events and delivers the corresponding e-mail.
 
 No factories are introduced, as aggregates are simple enough to be constructed directly.
 
@@ -148,5 +147,6 @@ The one domain concept whose state evolves through multiple transitions is Appoi
 ## Data-related aspects
 
 Pronto persists five families of data, mirroring the bounded contexts: user-related data, office-related data, shift-related data, appointment-related data, and the FAQ collection.
-Availability is deliberately not stored: it is derived at query time by expanding the shifts of an office's employees into candidate slots and subtracting those already taken by active appointments. This removes an entire class of synchronisation problems: there is no stored availability to keep consistent with bookings, and an employee can update their shifts without any risk of invalidating the appointments already booked under the previous ones.
+Availability is deliberately not stored: it is derived at query time by expanding the shifts of an office's employees into candidate slots and subtracting those already taken by active appointments. 
+
 No data is shared between components other than through the database itself, which acts as the single source of truth.

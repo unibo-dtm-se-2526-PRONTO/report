@@ -13,6 +13,7 @@ package "Logic layer" {
     [Routes]
     [Services]
     [Repositories]
+    [NotificationService]
   }
 
   package "Data Access Layer" {
@@ -21,8 +22,12 @@ package "Logic layer" {
 
   [Routes] --> [Services]
   [Services] --> [Repositories]
+  [Services] --> [NotificationService]
   [Repositories] --> [ORM]
 }
+
+interface "E-mail provider API" as MailAPI
+[NotificationService] ..> MailAPI
 
 package "Data Layer" {
   [Database]

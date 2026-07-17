@@ -4,7 +4,7 @@ actor "Student B" as B
 participant "Routes" as routes
 participant "BookingService" as booksvc
 participant "AppointmentRepository" as apptrepo
-database "PostgreSQL" as db
+database "Database" as db
 
 A -> routes : POST /appointments (slot S)
 B -> routes : POST /appointments (slot S)
@@ -30,10 +30,4 @@ apptrepo --> booksvc : appointment
 booksvc --> routes : appointment
 routes --> B : 201 Created (assigned to E2)
 
-note over booksvc, db
-  If every employee covering slot S had already
-  been taken, the last retry would also violate
-  the uniqueness constraint, and the BookingService
-  would report a 409 Conflict to the client instead.
-end note
 @enduml

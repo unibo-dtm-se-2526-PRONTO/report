@@ -46,11 +46,12 @@ Pronto is used by two personas: the **Student**, who needs information or assist
 **Availability management**
 
 - **FR4**: An employee can declare their office and working shifts; the system computes the bookable time slots of an office on demand, from the shifts declared by its employees, rather than storing them as separate records.
-    *Acceptance criteria*: given a declared shift (e.g. Monday 9:00–12:00) and a fixed slot duration, browsing that office's availability yields a sequence of non-overlapping, contiguous candidate slots covering the whole shift. When several employees of the same office declare overlapping shifts, the overlapping slots are presented once, and remain available until every employee covering them has been booked.
-    
+   
+    *Acceptance criteria*: given a declared shift (e.g. Monday 9:00–12:00) and a fixed slot duration, browsing that office's availability yields a sequence of non-overlapping, contiguous candidate slots covering the whole shift. 
+
 - **FR5**: An employee can update their declared shifts after registration, adding or removing availability.
 
-    *Acceptance criteria*: since time slots are derived from shifts rather than stored, updating a shift immediately changes the availability computed for subsequent browsing; appointments already booked under the previous shift are unaffected.
+    *Acceptance criteria*: since time slots are derived from shifts rather than stored, updating a shift immediately changes the availability computed for subsequent browsing.
 
 **Getting help (FAQ matching and booking)**
 
@@ -62,7 +63,7 @@ Pronto is used by two personas: the **Student**, who needs information or assist
     *Acceptance criteria*: given a question with at least one sufficiently similar FAQ entry, the corresponding answer is shown to the student; no suggestion is shown if no sufficiently relevant match is found.
 - **FR8**: If the student is not satisfied by the suggested answer (or none was found), they can browse the office's available time slots and book one, with the original question attached.
         
-    *Acceptance criteria*: after booking, the appointment is created with an initial "booked" status, the attached question, and exactly one employee of the office assigned to handle it; the slot keeps being offered to other students as long as at least one employee of the office is still free in it, and disappears from the office's availability once all of them are booked. No appointment is created if the student marks the suggested answer as satisfactory
+    *Acceptance criteria*: after booking, the appointment is created with an initial "booked" status, the attached question, and exactly one employee of the office assigned to handle it; the slot keeps being offered to other students as long as at least one employee of the office is still free in it, and disappears from the office's availability once all of them are booked. No appointment is created if the student marks the suggested answer as satisfactory.
 
 **Concurrency and distribution**
 
@@ -100,17 +101,38 @@ Pronto is used by two personas: the **Student**, who needs information or assist
 - **NFR5: Reproducibility**. The development, test, and CI environments must be reproducible across machines, so that the observed behaviour (in particular around concurrency) does not depend on who runs it or where.
 - **NFR6: Code quality**. Both backend and frontend codebases are covered by automated static analysis (type-checking, linting) and automated tests, with coverage tracked over time.
 
-### Implementation requirements
+### Implementation requirements and their reasons
 
-- **IR1**: The backend is implemented in Python with FastAPI. *Technical*: an async-first web framework fits the I/O-bound booking/notification workload and provides interactive API documentation out of the box.
-- **IR2**: Data is persisted in PostgreSQL, accessed through SQLAlchemy (async) with Alembic-managed migrations. *Technical*: NFR1 is best validated against a real DBMS with genuine transactional isolation.
-- **IR3**: The whole stack (backend, database, frontend) is containerized with Docker and orchestrated with Docker Compose, both locally and in CI. 
+- **IR1**: The backend is implemented in Python with FastAPI.
+
+    *Reason: Economic*. An asynchronous web framework fits the I/O-bound booking/notification workload and provides interactive API documentation out of the box, reducing development and documentation effort.
+
+- **IR2**: Data is persisted in PostgreSQL, accessed through SQLAlchemy with Alembic-managed migrations.
+
+    *Reason: Economic*. Consistency is best validated against a real DBMS with genuine transactional isolation, avoiding the cost of correctness issues discovered only in production.
+
+- **IR3**: The whole stack (backend, database, frontend) is containerized with Docker and orchestrated with Docker Compose, both locally and in CI.
+    
+     *Reason: Economic*. containerization keeps development, test, and CI environments identical, cutting the time spent chasing environment-specific bugs.
 - **IR4**: FAQ matching is implemented, as a baseline, with PostgreSQL full-text search + Chroma vector-based semantic search over the anonymised Q&A dataset. 
-- **IR5**: Authentication uses JWT, with passwords hashed via bcrypt. *Technical*: a standard, stateless mechanism that fits a REST API consumed by a separate single-page frontend.
-- **IR6**: The frontend is implemented with Vue.js. *Team decision*: chosen for the team's familiarity with its tooling (Vite, Vue Router, Pinia).
-- **IR7**: E-mail notifications are sent through `fastapi-mail`. *Technical*: integrates directly with the async backend without introducing a separate notification service.
-- **IR8**: Automated testing relies on `pytest`/`pytest-asyncio`/`httpx`/`pytest-cov` on the backend, and on an equivalent `Vitest`/`ESLint`/`Prettier` toolchain on the frontend. *Administrative*: both frontend and backend are tested.
-- **IR9**: Source control follows Conventional Commits and a Gitflow-inspired branching model (`main` / `develop` / `feature/*`), with continuous integration enforced via GitHub Actions on every pull request. *Administrative*: the goal is to keep a clear, reproducible development history.
+
+    *Reason: Economic*. both tools are free/open-source and reuse the existing database infrastructure, avoiding the cost of a paid third-party search or embedding service.
+- **IR5**: Authentication uses JWT, with passwords hashed via bcrypt. 
+
+    *Reason: Economic*. a standard, stateless mechanism that fits a REST API consumed by a separate single-page frontend, with well-tested libraries that minimize implementation and maintenance effort.
+- **IR6**: The frontend is implemented with Vue.js. 
+
+    *Reason: Political*. chosen for the team's familiarity with its tooling (Vite, Vue Router, Pinia), an internal team decision rather than a technical constraint.
+- **IR7**: E-mail notifications are sent through `fastapi-mail`. 
+
+    *Reason: Economic*. integrates directly with the async backend without introducing a separate notification service, saving infrastructure and integration cost.
+- **IR8**: Automated testing relies on `pytest`/`pytest-asyncio`/`httpx`/`pytest-cov` on the backend, and on an equivalent `Vitest`/`ESLint`/`Prettier` toolchain on the frontend. 
+
+    *Reason: Administrative*. both frontend and backend are tested to guarantee quality assurance.
+
+- **IR9**: Source control follows Conventional Commits and a Gitflow-inspired branching model (`main` / `develop` / `feature/`), with CI enforced via GitHub Actions on every pull request.
+
+     *Reason: Administrative*. the goal is to keep a clear, reproducible development history, and eventually to automate the release.
 
 ## Glossary
 
