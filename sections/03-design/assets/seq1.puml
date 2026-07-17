@@ -2,30 +2,27 @@
 actor Student as student
 participant "Routes" as routes
 participant "FaqMatchingService" as faqsvc
-participant "FaqRepository" as faqrepo
-participant "BookingService" as booksvc
 database "Database" as db
 
 student -> routes : POST /questions (office, question)
 routes -> faqsvc : match(office, question)
-faqsvc -> faqrepo : findByOffice(office)
-faqrepo -> db : SELECT faqs
-db --> faqrepo : faqs
-faqrepo --> faqsvc : faqs
-faqsvc --> routes : Match(answer, score) or none
-routes --> student : suggested answer (if any)
+faqsvc -> db : search FAQs in office\n(full-text + vector similarity)
+db --> faqsvc : best match (if any)
+
+alt match found in office
+  faqsvc --> routes : Match(answer, office, score)
+else no match in office
+  faqsvc -> db : search FAQs across all offices
+  db --> faqsvc : best match elsewhere (if any)
+  faqsvc --> routes : Match(answer, actualOffice, score) or none
+end
+
+routes --> student : suggested answer\n(+ correct office, if reassigned)
 
 alt answer resolves the request
   student -> routes : mark as satisfactory
   note right : flow ends, no appointment created
-else answer not satisfactory (or no match found)
-  student -> routes : GET /offices/{office}/availability
-  routes --> student : available time slots
-  student -> routes : POST /appointments (slot, question)
-  routes -> booksvc : book(student, office, slot, question)
-  booksvc -> db : insert appointment
-  db --> booksvc : ok
-  booksvc --> routes : appointment
-  routes --> student : booking confirmed
+else not satisfactory (or no match at all)
+  student -> routes : book appointment\n(chosen or corrected office)
 end
 @enduml
