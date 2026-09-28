@@ -98,7 +98,11 @@ Pronto is used by two personas: the **Student**, who needs information or assist
 - **NFR2 : Responsiveness**. FAQ matching, slot search, and appointment booking should complete within an interactively acceptable time (in the order of seconds) under normal load.
 - **NFR3: Security**. Passwords are never stored in clear text; authenticated sessions rely on signed, expiring tokens.
 - **NFR4: Privacy**. The FAQ knowledge base, derived from real historical helpdesk data, is anonymised before being imported, removing any information that could identify the original requester.
+
+    Concretely, FAQs are imported with the `import_faqs` command, which anonymises every text before it is stored, replacing with placeholders: e-mail addresses (except those on the institutional `@unibo.it` domain, which belong to the university, not to the requester), phone numbers, student ID numbers (matricole), Italian tax codes, and person names introduced by a cue (an honorific, a self-introduction or a closing sign-off). Name detection is heuristic: a name without such a cue is not recognised. For this reason imported FAQs are left unpublished until a staff member has reviewed them in the Django admin (unless the import is explicitly run with `--publish`).
 - **NFR5: Reproducibility**. The development, test, and CI environments must be reproducible across machines, so that the observed behaviour (in particular around concurrency) does not depend on who runs it or where.
+
+    Concretely, the Poetry version is pinned in a single place (the backend's `Dockerfile`), from which CI reads it; dependencies are locked in `poetry.lock`; the Docker image and CI both run Python 3.12; Docker Compose and CI both use PostgreSQL 16; and the test suite can run on the same database engine as production (PostgreSQL), not only on the default SQLite.
 - **NFR6: Code quality**. Both backend and frontend codebases are covered by automated static analysis (type-checking, linting) and automated tests, with coverage tracked over time.
 
 ### Implementation requirements and their reasons
@@ -111,9 +115,9 @@ Pronto is used by two personas: the **Student**, who needs information or assist
 
     *Reason: Economic*. Consistency is best validated against a real DBMS with genuine transactional isolation, avoiding the cost of correctness issues discovered only in production. SQLite keeps local test runs free of any database server, while the tests that need PostgreSQL (full-text search, row locking) run on it in CI.
 
-- **IR3**: The whole stack (backend, database, frontend) is containerized with Docker and orchestrated with Docker Compose, both locally and in CI.
-    
-     *Reason: Economic*. containerization keeps development, test, and CI environments identical, cutting the time spent chasing environment-specific bugs.
+- **IR3**: The backend and its PostgreSQL database are containerized with Docker and orchestrated with Docker Compose: the database runs on the `postgres:16` image with a health check, and the backend starts, applying the migrations, only once the database reports healthy. The frontend is not part of the backend's Compose setup. In CI, the tests run against a PostgreSQL service container based on the same image.
+
+    *Reason: Economic*. containerization keeps the database used in development, test, and CI identical, cutting the time spent chasing environment-specific bugs.
 - **IR4**: FAQ matching is implemented, as a baseline, with PostgreSQL full-text search over the anonymised Q&A dataset. The question is analysed with the `italian` or `english` text search configuration, according to its language, and ranked against each FAQ with the FAQ's question weighted above its answer; a FAQ is suggested only if its rank reaches a configurable relevance threshold, and if no FAQ of the chosen office does, the search falls back to all offices. Chroma vector-based semantic search is a planned extension, to be added behind the same matching interface, not part of the baseline.
 
     *Reason: Economic*. full-text search is free/open-source and reuses the existing database infrastructure, avoiding the cost of a paid third-party search or embedding service; the planned Chroma extension is open-source as well.
