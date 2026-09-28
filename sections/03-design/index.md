@@ -133,11 +133,11 @@ The second diagram addresses concurrent reservations. Since an office may be sta
 
 <p align="center"><img src="assets/seq2.svg" alt="Concurrent booking"></p>
 
-Furthermore, confirmation e-mails are sent synchronously to the e-mail provider after the appointment is persisted; a notification failure does not roll back the booking. Authentication is token-based: upon login, the backend issues a self-contained token, which the client attaches to every subsequent request and the backend validates before serving it.
+Furthermore, confirmation e-mails are sent synchronously to the e-mail provider after the appointment is persisted; a notification failure does not roll back the booking. Authentication is token-based: upon login, the backend issues an opaque token, stored in the database, which the client attaches to every subsequent request and the backend looks up before serving it; the token is deleted at logout.
 
 ## Behaviour
 
-Most of Pronto's components are stateless: the backend holds no per-user session (authentication relies on self-contained tokens), the FaqMatchingService computes matches from scratch on every request, and the client keeps only transient UI state. All persistent state lives in the database, and the only component allowed to update it is the backend's repository layer, always within the scope of a single request.
+Most of Pronto's components are stateless: the backend holds no per-user session in memory (authentication tokens are stored in the database), the FaqMatchingService computes matches from scratch on every request, and the client keeps only transient UI state. All persistent state lives in the database, and the only component allowed to update it is the backend's repository layer, always within the scope of a single request.
 
 The one domain concept whose state evolves through multiple transitions is Appointment. An appointment is created in the BOOKED state and reaches one of two terminal states: CANCELLED when the student withdraws, or COMPLETED, when the employee who handled the meeting marks it as concluded. 
 
