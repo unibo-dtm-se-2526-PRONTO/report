@@ -6,7 +6,7 @@ database "Database" as db
 
 student -> routes : POST /questions (office, question)
 routes -> faqsvc : match(office, question)
-faqsvc -> db : search FAQs in office\n(full-text + vector similarity)
+faqsvc -> db : search FAQs in office\n(full-text search)
 db --> faqsvc : best match (if any)
 
 alt match found in office
