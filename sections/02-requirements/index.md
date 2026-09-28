@@ -114,9 +114,9 @@ Pronto is used by two personas: the **Student**, who needs information or assist
 - **IR3**: The whole stack (backend, database, frontend) is containerized with Docker and orchestrated with Docker Compose, both locally and in CI.
     
      *Reason: Economic*. containerization keeps development, test, and CI environments identical, cutting the time spent chasing environment-specific bugs.
-- **IR4**: FAQ matching is implemented, as a baseline, with PostgreSQL full-text search + Chroma vector-based semantic search over the anonymised Q&A dataset. 
+- **IR4**: FAQ matching is implemented, as a baseline, with PostgreSQL full-text search over the anonymised Q&A dataset. The question is analysed with the `italian` or `english` text search configuration, according to its language, and ranked against each FAQ with the FAQ's question weighted above its answer; a FAQ is suggested only if its rank reaches a configurable relevance threshold, and if no FAQ of the chosen office does, the search falls back to all offices. Chroma vector-based semantic search is a planned extension, to be added behind the same matching interface, not part of the baseline.
 
-    *Reason: Economic*. both tools are free/open-source and reuse the existing database infrastructure, avoiding the cost of a paid third-party search or embedding service.
+    *Reason: Economic*. full-text search is free/open-source and reuses the existing database infrastructure, avoiding the cost of a paid third-party search or embedding service; the planned Chroma extension is open-source as well.
 - **IR5**: Authentication uses DRF token authentication (`TokenAuthentication`): at login the backend issues a random token, stored in the database, which the client sends with every request and which is deleted at logout. Passwords are hashed with Django's password hashing (PBKDF2 by default) and checked against Django's password validators at registration.
 
     *Reason: Economic*. both mechanisms ship with Django and DRF, so no additional library is needed; a token sent in a request header fits a REST API consumed by a separate single-page frontend, and relying on well-tested framework code minimizes implementation and maintenance effort.
