@@ -103,13 +103,13 @@ Pronto is used by two personas: the **Student**, who needs information or assist
 
 ### Implementation requirements and their reasons
 
-- **IR1**: The backend is implemented in Python with FastAPI.
+- **IR1**: The backend is implemented in Python with Django and Django REST Framework (DRF).
 
-    *Reason: Economic*. An asynchronous web framework fits the I/O-bound booking/notification workload and provides interactive API documentation out of the box, reducing development and documentation effort.
+    *Reason: Economic*. Django is "batteries included": ORM and migrations, authentication, the e-mail framework and the admin interface (used by staff to review and maintain the FAQs) come with the framework instead of being assembled from separate libraries, while DRF adds serialisation, authentication and permissions for the REST API consumed by the frontend. This reduces the code the team has to write and maintain.
 
-- **IR2**: Data is persisted in PostgreSQL, accessed through SQLAlchemy with Alembic-managed migrations.
+- **IR2**: Data is persisted in PostgreSQL, accessed through the Django ORM, with the schema managed by Django migrations. Automated tests run on an in-memory SQLite database by default, and on PostgreSQL when `TEST_DATABASE_URL` is set, as CI does.
 
-    *Reason: Economic*. Consistency is best validated against a real DBMS with genuine transactional isolation, avoiding the cost of correctness issues discovered only in production.
+    *Reason: Economic*. Consistency is best validated against a real DBMS with genuine transactional isolation, avoiding the cost of correctness issues discovered only in production. SQLite keeps local test runs free of any database server, while the tests that need PostgreSQL (full-text search, row locking) run on it in CI.
 
 - **IR3**: The whole stack (backend, database, frontend) is containerized with Docker and orchestrated with Docker Compose, both locally and in CI.
     
@@ -117,16 +117,16 @@ Pronto is used by two personas: the **Student**, who needs information or assist
 - **IR4**: FAQ matching is implemented, as a baseline, with PostgreSQL full-text search + Chroma vector-based semantic search over the anonymised Q&A dataset. 
 
     *Reason: Economic*. both tools are free/open-source and reuse the existing database infrastructure, avoiding the cost of a paid third-party search or embedding service.
-- **IR5**: Authentication uses JWT, with passwords hashed via bcrypt. 
+- **IR5**: Authentication uses DRF token authentication (`TokenAuthentication`): at login the backend issues a random token, stored in the database, which the client sends with every request and which is deleted at logout. Passwords are hashed with Django's password hashing (PBKDF2 by default) and checked against Django's password validators at registration.
 
-    *Reason: Economic*. a standard, stateless mechanism that fits a REST API consumed by a separate single-page frontend, with well-tested libraries that minimize implementation and maintenance effort.
+    *Reason: Economic*. both mechanisms ship with Django and DRF, so no additional library is needed; a token sent in a request header fits a REST API consumed by a separate single-page frontend, and relying on well-tested framework code minimizes implementation and maintenance effort.
 - **IR6**: The frontend is implemented with Vue.js. 
 
     *Reason: Political*. chosen for the team's familiarity with its tooling (Vite, Vue Router, Pinia), an internal team decision rather than a technical constraint.
-- **IR7**: E-mail notifications are sent through `fastapi-mail`. 
+- **IR7**: E-mail notifications are sent through Django's e-mail framework: by default e-mails are printed to the console (development), and they are delivered via SMTP when configured through environment variables. Booking e-mails are sent only after the database transaction commits, on a best-effort basis: a failed e-mail is logged and does not undo the booking.
 
-    *Reason: Economic*. integrates directly with the async backend without introducing a separate notification service, saving infrastructure and integration cost.
-- **IR8**: Automated testing relies on `pytest`/`pytest-asyncio`/`httpx`/`pytest-cov` on the backend, and on an equivalent `Vitest`/`ESLint`/`Prettier` toolchain on the frontend. 
+    *Reason: Economic*. integrates directly with the backend without introducing a separate notification service, saving infrastructure and integration cost; the console backend lets developers try the flows without an SMTP account.
+- **IR8**: Automated testing relies on `pytest`/`pytest-django`/`coverage` on the backend, and on an equivalent `Vitest`/`ESLint`/`Prettier` toolchain on the frontend. 
 
     *Reason: Administrative*. both frontend and backend are tested to guarantee quality assurance.
 
