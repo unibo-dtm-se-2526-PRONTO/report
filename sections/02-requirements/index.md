@@ -113,7 +113,7 @@ Pronto is used by two personas: the **Student**, who needs information or assist
 
 - **IR2**: Data is persisted in PostgreSQL, accessed through the Django ORM, with the schema managed by Django migrations. Automated tests run on an in-memory SQLite database by default, and on PostgreSQL when `TEST_DATABASE_URL` is set, as CI does.
 
-    *Reason: Economic*. Consistency is best validated against a real DBMS with genuine transactional isolation, avoiding the cost of correctness issues discovered only in production. SQLite keeps local test runs free of any database server, while the tests that need PostgreSQL (full-text search, row locking) run on it in CI.
+    *Reason: Economic*. Consistency is best validated against a real DBMS with genuine transactional isolation, avoiding the cost of correctness issues discovered only in production. SQLite keeps local test runs free of any database server, while the tests that need PostgreSQL, such as those of the full-text FAQ matching, run on it in CI.
 
 - **IR3**: The backend and its PostgreSQL database are containerized with Docker and orchestrated with Docker Compose: the database runs on the `postgres:16` image with a health check, and the backend starts, applying the migrations, only once the database reports healthy. The frontend is not part of the backend's Compose setup. In CI, the tests run against a PostgreSQL service container based on the same image.
 
