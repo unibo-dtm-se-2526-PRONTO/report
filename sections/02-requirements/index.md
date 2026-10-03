@@ -98,35 +98,39 @@ Pronto is used by two personas: the **Student**, who needs information or assist
 - **NFR2 : Responsiveness**. FAQ matching, slot search, and appointment booking should complete within an interactively acceptable time (in the order of seconds) under normal load.
 - **NFR3: Security**. Passwords are never stored in clear text; authenticated sessions rely on signed, expiring tokens.
 - **NFR4: Privacy**. The FAQ knowledge base, derived from real historical helpdesk data, is anonymised before being imported, removing any information that could identify the original requester.
+
+    Concretely, FAQs are imported with the `import_faqs` command, which anonymises every text before it is stored, replacing with placeholders: e-mail addresses (except those on the institutional `@unibo.it` domain, which belong to the university, not to the requester), phone numbers, student ID numbers (matricole), Italian tax codes, and person names introduced by a cue (an honorific, a self-introduction or a closing sign-off). Name detection is heuristic: a name without such a cue is not recognised. For this reason imported FAQs are left unpublished until a staff member has reviewed them in the Django admin (unless the import is explicitly run with `--publish`).
 - **NFR5: Reproducibility**. The development, test, and CI environments must be reproducible across machines, so that the observed behaviour (in particular around concurrency) does not depend on who runs it or where.
+
+    Concretely, the Poetry version is pinned in a single place (the backend's `Dockerfile`), from which CI reads it; dependencies are locked in `poetry.lock`; the Docker image and CI both run Python 3.12; Docker Compose and CI both use PostgreSQL 16; and the test suite can run on the same database engine as production (PostgreSQL), not only on the default SQLite.
 - **NFR6: Code quality**. Both backend and frontend codebases are covered by automated static analysis (type-checking, linting) and automated tests, with coverage tracked over time.
 
 ### Implementation requirements and their reasons
 
-- **IR1**: The backend is implemented in Python with FastAPI.
+- **IR1**: The backend is implemented in Python with Django and Django REST Framework (DRF).
 
-    *Reason: Economic*. An asynchronous web framework fits the I/O-bound booking/notification workload and provides interactive API documentation out of the box, reducing development and documentation effort.
+    *Reason: Economic*. Django is "batteries included": ORM and migrations, authentication, the e-mail framework and the admin interface (used by staff to review and maintain the FAQs) come with the framework instead of being assembled from separate libraries, while DRF adds serialisation, authentication and permissions for the REST API consumed by the frontend. This reduces the code the team has to write and maintain.
 
-- **IR2**: Data is persisted in PostgreSQL, accessed through SQLAlchemy with Alembic-managed migrations.
+- **IR2**: Data is persisted in PostgreSQL, accessed through the Django ORM, with the schema managed by Django migrations. Automated tests run on an in-memory SQLite database by default, and on PostgreSQL when `TEST_DATABASE_URL` is set, as CI does.
 
-    *Reason: Economic*. Consistency is best validated against a real DBMS with genuine transactional isolation, avoiding the cost of correctness issues discovered only in production.
+    *Reason: Economic*. Consistency is best validated against a real DBMS with genuine transactional isolation, avoiding the cost of correctness issues discovered only in production. SQLite keeps local test runs free of any database server, while the tests that need PostgreSQL, such as those of the full-text FAQ matching, run on it in CI.
 
-- **IR3**: The whole stack (backend, database, frontend) is containerized with Docker and orchestrated with Docker Compose, both locally and in CI.
-    
-     *Reason: Economic*. containerization keeps development, test, and CI environments identical, cutting the time spent chasing environment-specific bugs.
-- **IR4**: FAQ matching is implemented, as a baseline, with PostgreSQL full-text search + Chroma vector-based semantic search over the anonymised Q&A dataset. 
+- **IR3**: The backend and its PostgreSQL database are containerized with Docker and orchestrated with Docker Compose: the database runs on the `postgres:16` image with a health check, and the backend starts, applying the migrations, only once the database reports healthy. The frontend is not part of the backend's Compose setup. In CI, the tests run against a PostgreSQL service container based on the same image.
 
-    *Reason: Economic*. both tools are free/open-source and reuse the existing database infrastructure, avoiding the cost of a paid third-party search or embedding service.
-- **IR5**: Authentication uses JWT, with passwords hashed via bcrypt. 
+    *Reason: Economic*. containerization keeps the database used in development, test, and CI identical, cutting the time spent chasing environment-specific bugs.
+- **IR4**: FAQ matching is implemented, as a baseline, with PostgreSQL full-text search over the anonymised Q&A dataset. The question is analysed with the `italian` or `english` text search configuration, according to its language, and ranked against each FAQ with the FAQ's question weighted above its answer; a FAQ is suggested only if its rank reaches a configurable relevance threshold, and if no FAQ of the chosen office does, the search falls back to all offices. Chroma vector-based semantic search is a planned extension, to be added behind the same matching interface, not part of the baseline.
 
-    *Reason: Economic*. a standard, stateless mechanism that fits a REST API consumed by a separate single-page frontend, with well-tested libraries that minimize implementation and maintenance effort.
+    *Reason: Economic*. full-text search is free/open-source and reuses the existing database infrastructure, avoiding the cost of a paid third-party search or embedding service; the planned Chroma extension is open-source as well.
+- **IR5**: Authentication uses DRF token authentication (`TokenAuthentication`): at login the backend issues a random token, stored in the database, which the client sends with every request and which is deleted at logout. Passwords are hashed with Django's password hashing (PBKDF2 by default) and checked against Django's password validators at registration.
+
+    *Reason: Economic*. both mechanisms ship with Django and DRF, so no additional library is needed; a token sent in a request header fits a REST API consumed by a separate single-page frontend, and relying on well-tested framework code minimizes implementation and maintenance effort.
 - **IR6**: The frontend is implemented with Vue.js. 
 
     *Reason: Political*. chosen for the team's familiarity with its tooling (Vite, Vue Router, Pinia), an internal team decision rather than a technical constraint.
-- **IR7**: E-mail notifications are sent through `fastapi-mail`. 
+- **IR7**: E-mail notifications are sent through Django's e-mail framework: by default e-mails are printed to the console (development), and they are delivered via SMTP when configured through environment variables. Booking e-mails are sent only after the database transaction commits, on a best-effort basis: a failed e-mail is logged and does not undo the booking.
 
-    *Reason: Economic*. integrates directly with the async backend without introducing a separate notification service, saving infrastructure and integration cost.
-- **IR8**: Automated testing relies on `pytest`/`pytest-asyncio`/`httpx`/`pytest-cov` on the backend, and on an equivalent `Vitest`/`ESLint`/`Prettier` toolchain on the frontend. 
+    *Reason: Economic*. integrates directly with the backend without introducing a separate notification service, saving infrastructure and integration cost; the console backend lets developers try the flows without an SMTP account.
+- **IR8**: Automated testing relies on `pytest`/`pytest-django`/`coverage` on the backend, and on an equivalent `Vitest`/`ESLint`/`Prettier` toolchain on the frontend. 
 
     *Reason: Administrative*. both frontend and backend are tested to guarantee quality assurance.
 
