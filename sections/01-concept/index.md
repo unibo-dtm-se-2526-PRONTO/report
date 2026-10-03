@@ -10,7 +10,7 @@ Pronto is a web application that digitizes and automates the telephone-based hel
 
 ## Type of product
 
-Pronto is a client-server web application, structured as a 3-tier system: a single-page frontend (shared by students and employees), an API backend encapsulating booking, FAQ-matching, authentication, and notification logic, and a relational database for persistence. No native mobile application, CLI, or library is planned: every actor accesses the system exclusively through a web browser.
+Pronto is a client-server web application, structured as a 3-tier system: a single-page frontend (shared by students and employees), an API backend encapsulating booking, FAQ-matching, authentication, and notification logic, and a data tier made of a relational database for persistence and a vector store supporting the semantic side of FAQ matching. No native mobile application, CLI, or library is planned: every actor accesses the system exclusively through a web browser.
 
 ## Use case collection
 
@@ -39,11 +39,12 @@ Both roles interact through the same responsive single-page web application, fro
 Yes. Pronto persists:
 
 - **Identity data**: for students, name, surname, student ID (matricola), course of study, and institutional e-mail; for employees, name, surname, office, and working shifts. Passwords are stored hashed, never in clear text.
-- **Booking data**: appointments, each associated with a time slot, an office, a free-text question/note from the student, and a lifecycle status (booked, cancelled, or completed).
+- **Booking data**: appointments, each associated with a time slot, an office, the employee assigned to handle it, a free-text question/note from the student (with the FAQ answer they were suggested, if any), and a lifecycle status (booked, cancelled, or completed).
+- **Question data**: every question asked, with the office it was asked about and the FAQ suggested for it, kept without any link to the student who asked it, to learn what the knowledge base does not yet cover.
 - **Knowledge base data**: a FAQ collection built from real, anonymised historical helpdesk questions and answers, used to automatically suggest an answer to a student's question before any appointment is created.
 
-All persistent data lives centrally, in a single relational database on the backend side; clients only keep transient UI/session state and never store sensitive data locally.
+All persistent data lives centrally, in a single relational database on the backend side. The only other store is the vector store used by FAQ matching, which holds the embeddings of the published FAQs: derived data, never edited by hand and rebuildable from the database at any time. Clients only keep transient UI/session state and never store sensitive data locally.
 
 ### Multiple roles
 
-As described above, Pronto distinguishes between the **Student** and **Employee** roles at registration time, and every subsequent interaction — which actions are available, which data is visible — depends on the authenticated user's role.
+As described above, Pronto distinguishes between the **Student** and **Employee** roles at registration time, and every subsequent interaction — which actions are available, which data is visible — depends on the authenticated user's role. A third role, **Administrator**, is reserved to the staff who run the helpdesk: it cannot be obtained through registration, and it oversees every appointment and maintains offices and FAQs.

@@ -3,20 +3,33 @@ actor Student as student
 participant "Routes" as routes
 participant "FaqMatchingService" as faqsvc
 database "Database" as db
+database "Vector store\n(Chroma)" as vs
 
 student -> routes : POST /questions (office, question)
 routes -> faqsvc : match(office, question)
-faqsvc -> db : search FAQs in office\n(full-text search)
-db --> faqsvc : best match (if any)
+
+faqsvc -> db : full-text search\nFAQs in office
+db --> faqsvc : best match (if rank ≥ threshold)
+opt no full-text match in office
+  faqsvc -> faqsvc : embed question\n(local model)
+  faqsvc -> vs : similarity search\nFAQs in office
+  vs --> faqsvc : nearest FAQ (if similarity ≥ threshold)
+  note right of vs : Chroma unreachable:\nerror logged,\nno semantic match
+end
 
 alt match found in office
   faqsvc --> routes : Match(answer, office, score)
 else no match in office
-  faqsvc -> db : search FAQs across all offices
+  faqsvc -> db : full-text search\nFAQs across all offices
   db --> faqsvc : best match elsewhere (if any)
+  opt no full-text match elsewhere
+    faqsvc -> vs : similarity search\nFAQs across all offices
+    vs --> faqsvc : nearest FAQ elsewhere (if any)
+  end
   faqsvc --> routes : Match(answer, actualOffice, score) or none
 end
 
+routes -> db : record question\n(+ matched FAQ, method)
 routes --> student : suggested answer\n(+ correct office, if reassigned)
 
 alt answer resolves the request

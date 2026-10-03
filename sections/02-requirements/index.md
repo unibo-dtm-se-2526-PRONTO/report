@@ -25,7 +25,7 @@ Pronto is used by two personas: the **Student**, who needs information or assist
     - **US2d: Booking as a fallback.** If the suggested answer does not resolve the request (or no relevant match was found), the student browses the office's available time slots, selects one, and books it, with the original question attached for the handling employee.
     - **US2e: Concurrency control.** Two students must never end up with the same employee on the same time slot, no matter how close in time their requests are.
     - **US2f: Equal distribution.** As a student, I only see the available slots of an office, not the individual employee handling them, so that the system is free to distribute incoming requests evenly among the office's staff.
-    - **Notifications.** As a student or employee, I want to be notified by e-mail when a new appointment is booked, so that the employee is aware of it and the student has a record of it, without needing to keep the application open.
+    - **Notifications.** As a student or employee, I want to be notified by e-mail when a new appointment is booked or cancelled, so that the employee is aware of it and the student has a record of it, without needing to keep the application open.
 
 ## Requirements analysis
 
@@ -57,10 +57,10 @@ Pronto is used by two personas: the **Student**, who needs information or assist
 
 - **FR6**: A student can ask a question about a given office.
 
-    *Acceptance criteria*: given an office and a free-text question, the request is recorded and immediately compared against the FAQ knowledge base.
+    *Acceptance criteria*: given an office and a free-text question, the question is immediately compared against the FAQ knowledge base and recorded together with the suggested FAQ, if any, without any link to the student who asked it.
 - **FR7**: The system suggests the best-matching FAQ answer for the submitted question, if a sufficiently relevant one exists.
 
-    *Acceptance criteria*: given a question with at least one sufficiently similar FAQ entry, the corresponding answer is shown to the student; no suggestion is shown if no sufficiently relevant match is found.
+    *Acceptance criteria*: given a question with at least one sufficiently similar FAQ entry, the corresponding answer is shown to the student; the FAQs of the chosen office are searched first, and only if none of them is relevant enough are those of every office searched, in which case the answer is shown together with the office it belongs to. No suggestion is shown if no sufficiently relevant match is found.
 - **FR8**: If the student is not satisfied by the suggested answer (or none was found), they can browse the office's available time slots and book one, with the original question attached.
         
     *Acceptance criteria*: after booking, the appointment is created with an initial "booked" status, the attached question, and exactly one employee of the office assigned to handle it; the slot keeps being offered to other students as long as at least one employee of the office is still free in it, and disappears from the office's availability once all of them are booked. No appointment is created if the student marks the suggested answer as satisfactory.
