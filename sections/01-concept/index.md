@@ -32,7 +32,7 @@ Students and employees are geographically distributed: they access Pronto from a
 
 ### How do they interact with the system, and with which devices
 
-Both roles interact through the same responsive single-page web application, from desktop or mobile browsers. A student first asks a free-text question about a given office; the FAQ-matching engine suggests the best-matching answer drawn from past questions, and the student decides whether it resolves their request. If it does, no appointment is created. Otherwise, the student browses that office's available time slots, selects one, and books it, with the original question attached for the handling employee. E-mail notifications complement the web interface, informing users of state changes (a new appointment being booked, or an existing one being cancelled or completed) without requiring them to keep the application open.
+Both roles interact through the same responsive single-page web application, from desktop or mobile browsers. A student first asks a free-text question about a given office; the FAQ-matching engine suggests the best-matching answer drawn from past questions, and the student decides whether it resolves their request. If it does, no appointment is created. Otherwise, the student browses that office's available time slots, selects one, and books it, with the original question attached for the handling employee. E-mail notifications complement the web interface, informing users of state changes (a new appointment being booked, or an existing one being cancelled) without requiring them to keep the application open.
 
 ### Does the system need to store user data
 

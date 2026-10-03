@@ -35,13 +35,13 @@ Pronto is used by two personas: the **Student**, who needs information or assist
 
 - **FR1**: A student can register, providing name, surname, student ID, course of study, and institutional e-mail, and can subsequently authenticate with e-mail and password.
 
-    *Acceptance criteria*: given valid, unique registration data, a new student account is created; the student can then log in with the same credentials. Registration is rejected if the e-mail does not belong to the `@studio.unibo.it` domain or is already registered.
-- **FR2**: An employee can register, providing name, surname, and office, and can subsequently authenticate with e-mail and password.
+    *Acceptance criteria*: given valid, unique registration data, a new student account is created, inactive, and a verification link is e-mailed to the given address; once the link is opened the account is activated and the student can log in with the same credentials, while login is refused before that. Registration is rejected if the e-mail does not belong to the `@studio.unibo.it` domain or is already registered.
+- **FR2**: An employee can register, providing name and surname, and can subsequently authenticate with e-mail and password. The office the employee works for is chosen once, after registration, as the first step of declaring availability (FR4); afterwards only an administrator can move the employee to another office, since the appointments already booked with the old office would otherwise be assigned to someone who no longer works there.
         
-    *Acceptance criteria*: given valid, unique registration data with an e-mail belonging to the `@unibo.it` domain, a new employee account is created; registration is rejected otherwise.
-- **FR3**: Authenticated users can only access the actions and data pertinent to their role (student or employee).
+    *Acceptance criteria*: given valid, unique registration data with an e-mail belonging to the `@unibo.it` domain, a new employee account is created and activated through the same e-mailed verification link as in FR1; registration is rejected otherwise. Choosing an office a second time is rejected.
+- **FR3**: Authenticated users can only access the actions and data pertinent to their role (student or employee). A third role, administrator, is reserved to the staff who run the helpdesk: it is not obtained through registration, and it oversees every appointment and maintains offices and FAQs.
 
-    *Acceptance criteria*: a student cannot access employee-only actions (e.g. declaring availability), and vice versa; unauthenticated requests to protected endpoints are rejected.
+    *Acceptance criteria*: a student cannot access employee-only actions (e.g. declaring availability), and vice versa; a student or employee only sees their own appointments, and someone else's appointment is reported as not found; unauthenticated requests to protected endpoints are rejected.
 
 **Availability management**
 
@@ -77,26 +77,26 @@ Pronto is used by two personas: the **Student**, who needs information or assist
 
 **Appointment lifecycle**
 
-- **FR11**: A student can cancel a previously booked appointment.
+- **FR11**: A booked appointment can be cancelled, before it starts, by the student who booked it, by the employee assigned to it, or by an administrator.
     
-    *Acceptance criteria*: given a booked appointment belonging to the authenticated student, cancelling it transitions the appointment to the "cancelled" status and frees the corresponding slot.
+    *Acceptance criteria*: given a booked appointment that has not started yet, cancelling it transitions the appointment to the "cancelled" status and frees the corresponding slot; cancelling an appointment that has already started, or that is not in the "booked" status, is rejected.
 - **FR12**: An employee can mark a booked appointment as completed once the corresponding meeting has taken place.
     
-    *Acceptance criteria*: given a booked appointment, the handling employee can mark it completed, transitioning it to the "completed" status.
+    *Acceptance criteria*: given a booked appointment whose slot has started, the handling employee can mark it completed, transitioning it to the "completed" status; marking it before the slot starts is rejected. Completing an appointment sends no e-mail.
 
 **Notifications**
 
 - **FR13**: The system notifies the student by e-mail confirming that their appointment has been booked.
-- **FR14**: The system notifies the relevant employee by e-mail when a new appointment is booked for their office.
-- **FR15**: The system notifies the student by e-mail if their appointment is cancelled.
+- **FR14**: The system notifies the assigned employee by e-mail when a new appointment is booked with them, including the FAQ answer the student was suggested and found unsatisfactory, if any.
+- **FR15**: When an appointment is cancelled, the system notifies by e-mail whoever did not cancel it: the employee if the student cancelled, the student if the employee cancelled, and both if an administrator did.
     
-    *Acceptance criteria* (FR13–FR15): each listed lifecycle transition results in exactly one e-mail being sent to the correct recipient, containing enough context (office, date/time, question) to act on it without opening the application.
+    *Acceptance criteria* (FR13–FR15): each listed lifecycle transition results in exactly one e-mail being sent to each of the recipients listed above, containing enough context (office, date/time, question) to act on it without opening the application; the student receives it in the language they asked the question in, the employee in Italian.
 
 ### Non-functional requirements
 
 - **NFR1: Consistency**. The booking mechanism must guarantee that no employee ever holds two active appointments on the same time slot, even under simultaneous requests. The fairness of the distribution among colleagues (FR10), by contrast, is a best-effort property, not an invariant.
 - **NFR2 : Responsiveness**. FAQ matching, slot search, and appointment booking should complete within an interactively acceptable time (in the order of seconds) under normal load.
-- **NFR3: Security**. Passwords are never stored in clear text; authenticated sessions rely on signed, expiring tokens.
+- **NFR3: Security**. Passwords are never stored in clear text; only accounts whose institutional e-mail address has been verified can authenticate; authenticated requests carry a random, unguessable token issued at login and revoked at logout.
 - **NFR4: Privacy**. The FAQ knowledge base, derived from real historical helpdesk data, is anonymised before being imported, removing any information that could identify the original requester.
 
     Concretely, FAQs are imported with the `import_faqs` command, which anonymises every text before it is stored, replacing with placeholders: e-mail addresses (except those on the institutional `@unibo.it` domain, which belong to the university, not to the requester), phone numbers, student ID numbers (matricole), Italian tax codes, and person names introduced by a cue (an honorific, a self-introduction or a closing sign-off). Name detection is heuristic: a name without such a cue is not recognised. For this reason imported FAQs are left unpublished until a staff member has reviewed them in the Django admin (unless the import is explicitly run with `--publish`).
@@ -115,12 +115,16 @@ Pronto is used by two personas: the **Student**, who needs information or assist
 
     *Reason: Economic*. Consistency is best validated against a real DBMS with genuine transactional isolation, avoiding the cost of correctness issues discovered only in production. SQLite keeps local test runs free of any database server, while the tests that need PostgreSQL, such as those of the full-text FAQ matching, run on it in CI.
 
-- **IR3**: The backend and its PostgreSQL database are containerized with Docker and orchestrated with Docker Compose: the database runs on the `postgres:16` image with a health check, and the backend starts, applying the migrations, only once the database reports healthy. The frontend is not part of the backend's Compose setup. In CI, the tests run against a PostgreSQL service container based on the same image.
+- **IR3**: The backend, its PostgreSQL database and the Chroma vector store (IR4) are containerized with Docker and orchestrated with Docker Compose: the database runs on the `postgres:16` image and Chroma on the `chromadb/chroma` image, both with a health check, and the backend starts, applying the migrations, only once both report healthy. The frontend is not part of the backend's Compose setup. In CI, the tests run against a PostgreSQL service container based on the same image, while the tests of semantic matching replace the Chroma server with an in-memory Chroma client and the embedding model with a small stand-in.
 
     *Reason: Economic*. containerization keeps the database used in development, test, and CI identical, cutting the time spent chasing environment-specific bugs.
-- **IR4**: FAQ matching is implemented, as a baseline, with PostgreSQL full-text search over the anonymised Q&A dataset. The question is analysed with the `italian` or `english` text search configuration, according to its language, and ranked against each FAQ with the FAQ's question weighted above its answer; a FAQ is suggested only if its rank reaches a configurable relevance threshold, and if no FAQ of the chosen office does, the search falls back to all offices. Chroma vector-based semantic search is a planned extension, to be added behind the same matching interface, not part of the baseline.
+- **IR4**: FAQ matching combines two techniques in cascade, behind a common matching interface, over the published FAQs of the anonymised Q&A dataset:
+    1. **PostgreSQL full-text search** goes first. The question is analysed with the `italian` or `english` text search configuration, according to its language, and ranked against each FAQ with the FAQ's question weighted above its answer; a FAQ is suggested if its rank reaches a configurable threshold (`FAQ_MATCH_MIN_RANK`, 0.45).
+    2. **Semantic search with Chroma** is asked only when full-text search finds nothing relevant enough. The question is turned into an embedding by a local multilingual model (`paraphrase-multilingual-MiniLM-L12-v2`, run through `fastembed` on ONNX Runtime) and compared, by cosine similarity, with the embeddings of the FAQs' questions in the same language, stored in the Chroma vector store; a FAQ is suggested if the similarity reaches its own configurable threshold (`FAQ_SEMANTIC_MIN_SIMILARITY`, 0.7).
 
-    *Reason: Economic*. full-text search is free/open-source and reuses the existing database infrastructure, avoiding the cost of a paid third-party search or embedding service; the planned Chroma extension is open-source as well.
+    The two scores live on different scales and are never compared with each other; every recorded question keeps which of the two techniques found its answer. The whole cascade runs on the office the student chose first, and only if it finds nothing there on all offices. Both thresholds were calibrated on the real FAQ dataset. The vector store is kept in sync with the published FAQs whenever one is saved or deleted, once the transaction commits, and can be rebuilt from the database with the `rebuild_faq_index` command; if Chroma cannot be reached, the error is logged and matching falls back to full-text search alone, so the student still gets an answer or the way to book.
+
+    *Reason: Economic*. both PostgreSQL full-text search and Chroma are free/open-source, and full-text search reuses the existing database infrastructure; computing the embeddings locally avoids the cost of a paid embedding service, and keeps students' questions on the project's own infrastructure. `fastembed` runs the model without PyTorch, keeping the backend's Docker image small.
 - **IR5**: Authentication uses DRF token authentication (`TokenAuthentication`): at login the backend issues a random token, stored in the database, which the client sends with every request and which is deleted at logout. Passwords are hashed with Django's password hashing (PBKDF2 by default) and checked against Django's password validators at registration.
 
     *Reason: Economic*. both mechanisms ship with Django and DRF, so no additional library is needed; a token sent in a request header fits a REST API consumed by a separate single-page frontend, and relying on well-tested framework code minimizes implementation and maintenance effort.
@@ -134,7 +138,7 @@ Pronto is used by two personas: the **Student**, who needs information or assist
 
     *Reason: Administrative*. both frontend and backend are tested to guarantee quality assurance.
 
-- **IR9**: Source control follows Conventional Commits and a Gitflow-inspired branching model (`main` / `develop` / `feature/`), with CI enforced via GitHub Actions on every pull request.
+- **IR9**: Source control follows Conventional Commits and a Gitflow-inspired branching model: a stable branch (`master` in the backend repository, `main` in the report repository), an integration branch `develop`, and short-lived branches named after the kind of change (`feature/`, `fix/`, `refactor/`, `test/`, `docs/`, `chore/`), each merged into `develop` through a pull request. CI runs via GitHub Actions on every push and pull request; once a change lands on `develop` and the tests pass, CI also applies the pending migrations to the database the team shares (hosted on Neon), so that its schema always matches `develop`.
 
      *Reason: Administrative*. the goal is to keep a clear, reproducible development history, and eventually to automate the release.
 
