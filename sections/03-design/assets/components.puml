@@ -5,6 +5,7 @@ skinparam shadowing false
 
 package "Presentation layer" {
   [Single-Page Application] as SPA
+  [Admin interface] as Admin
 }
 
 package "Logic layer" {
@@ -18,28 +19,35 @@ package "Logic layer" {
 
   package "Data Access Layer" {
     [Object-Relational Mapper] as ORM
+    [Vector index] as VI
   }
 
   [Routes] --> [Services]
   [Services] --> [Repositories]
   [Services] --> [NotificationService]
   [Repositories] --> [ORM]
+  [Repositories] --> VI
 }
 
-interface "E-mail provider API" as MailAPI
+interface "SMTP" as MailAPI
 [NotificationService] ..> MailAPI
 
 package "Data Layer" {
   [Database]
+  [Vector store] as VS
 }
 
 interface "Application API" as API
 interface "Query interface" as Query
+interface "Similarity search" as Similarity
 
 API - [Routes]
 SPA ..> API
+Admin ..> [Repositories]
 
-Query - [Database]
+[Database] -up- Query
+VS -up- Similarity
 [ORM] ..> Query
+VI ..> Similarity
 
 @enduml

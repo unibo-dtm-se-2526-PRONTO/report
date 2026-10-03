@@ -6,28 +6,37 @@ participant "BookingService" as booksvc
 participant "AppointmentRepository" as apptrepo
 database "Database" as db
 
-A -> routes : POST /appointments (slot S)
-B -> routes : POST /appointments (slot S)
+A -> routes : POST /appointments (office, slot S)
+B -> routes : POST /appointments (office, slot S)
 routes -> booksvc : book(A, office, S)
 routes -> booksvc : book(B, office, S)
 
+booksvc -> apptrepo : least loaded free employee on duty at S
+apptrepo --> booksvc : E1 (for A)
+booksvc -> apptrepo : least loaded free employee on duty at S
+apptrepo --> booksvc : E1 (for B)
+note over booksvc : both requests read before either inserts:\nboth pick E1
+
 booksvc -> apptrepo : create(A, employee=E1, slot=S)
-apptrepo -> db : BEGIN; INSERT (E1, S)
+apptrepo -> db : BEGIN; lock E1, still on duty?; INSERT (E1, S)
 db --> apptrepo : ok (unique constraint satisfied)
 apptrepo --> booksvc : appointment
 booksvc --> routes : appointment
 routes --> A : 201 Created (assigned to E1)
 
 booksvc -> apptrepo : create(B, employee=E1, slot=S)
-apptrepo -> db : BEGIN; INSERT (E1, S)
+apptrepo -> db : BEGIN; lock E1, still on duty?; INSERT (E1, S)
 db --> apptrepo : unique constraint violation
-apptrepo --> booksvc : SlotUnavailableError
+apptrepo --> booksvc : conflict (rolled back)
 
+booksvc -> apptrepo : least loaded free employee on duty at S
+apptrepo --> booksvc : E2
 booksvc -> apptrepo : create(B, employee=E2, slot=S)
-apptrepo -> db : BEGIN; INSERT (E2, S)
+apptrepo -> db : BEGIN; lock E2, still on duty?; INSERT (E2, S)
 db --> apptrepo : ok (unique constraint satisfied)
 apptrepo --> booksvc : appointment
 booksvc --> routes : appointment
 routes --> B : 201 Created (assigned to E2)
 
+note over booksvc, db : at most one attempt per employee on duty at S;\nonce nobody is left free, the booking is refused ("slot just taken")
 @enduml

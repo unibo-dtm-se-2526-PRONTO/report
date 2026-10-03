@@ -3,7 +3,7 @@ actor Student as student
 participant "Routes" as routes
 participant "FaqMatchingService" as faqsvc
 database "Database" as db
-database "Vector store\n(Chroma)" as vs
+database "Vector store" as vs
 
 student -> routes : POST /questions (office, question)
 routes -> faqsvc : match(office, question)
@@ -14,7 +14,7 @@ opt no full-text match in office
   faqsvc -> faqsvc : embed question\n(local model)
   faqsvc -> vs : similarity search\nFAQs in office
   vs --> faqsvc : nearest FAQ (if similarity ≥ threshold)
-  note right of vs : Chroma unreachable:\nerror logged,\nno semantic match
+  note right of vs : store unreachable:\nerror logged,\nno semantic match
 end
 
 alt match found in office

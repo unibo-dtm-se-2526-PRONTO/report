@@ -11,36 +11,47 @@ skinparam package {
   FontStyle bold
 }
 
+package "Shared Kernel" {
+  rectangle Office
+}
+
 package "Booking Context" {
   rectangle Appointment
   rectangle Shift
-  rectangle Office
+  rectangle Employee
   rectangle TimeSlot
 
   Shift ..> TimeSlot : expands into
   Appointment --> TimeSlot : occupies
-  Appointment --> Office
+  Appointment --> Employee : handled by
+  Shift --> Employee : declared by
 }
 
 package "Support Context" {
   rectangle Faq
-  rectangle Category
+  rectangle Inquiry
   rectangle Match
 
-  Faq --> Category
   Match --> Faq
+  Inquiry ..> Match : records
 }
 
 package "Identity Context" {
   rectangle User
   rectangle Role
   rectangle Credentials
+  rectangle StudentProfile
 
   User --> Role
   User --> Credentials
+  User --> StudentProfile
 }
 
-Appointment ..> User : booked by / handled by
-Shift ..> User : declared by
+Appointment --> Office
+Employee --> Office : works for
+Faq --> Office : filed under
+Inquiry --> Office : asked about
+Appointment ..> Faq : suggested
+Appointment ..> User : booked by
+Employee ..> User : is
 @enduml
-

@@ -2,10 +2,10 @@
 
 skinparam shadowing false
 
-[*] --> Booked : student books an available slot
+[*] --> Booked : student books an available slot\n(an employee is assigned)
 
-Booked --> Cancelled : student withdraws
-Booked --> Completed : employee marks\nthe meeting as concluded
+Booked --> Cancelled : student, assigned employee or admin cancels\n[before the slot starts]
+Booked --> Completed : assigned employee marks\nthe meeting as concluded\n[once the slot has started]
 
 Cancelled --> [*]
 Completed --> [*]
