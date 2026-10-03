@@ -3,6 +3,7 @@ left to right direction
 
 actor Student
 actor Employee
+actor Administrator as Admin
 
 rectangle Pronto {
     usecase "Register / Login" as UC1
@@ -16,6 +17,7 @@ rectangle Pronto {
     usecase "Cancel appointment" as UC8
     usecase "Mark appointment as completed" as UC9
     usecase "Receive notifications" as UC10
+    usecase "Manage offices & FAQs" as UC11
 }
 
 Student --> UC1
@@ -29,8 +31,12 @@ Student --> UC10
 Employee --> UC1
 Employee --> UC2
 Employee --> UC3
+Employee --> UC8
 Employee --> UC9
 Employee --> UC10
+
+Admin --> UC8
+Admin --> UC11
 
 UC4 ..> UC5 : <<include>>
 UC5 ..> UC5a : <<extend>>
