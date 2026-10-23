@@ -65,7 +65,7 @@ Pronto's infrastructure comprises the following components:
 - **Application server (1 instance)**: a single instance of the backend serves the API consumed by clients and the administration interface. The embedding model used by semantic matching runs inside this process, so no external embedding service is involved.
 - **Database server (1 instance)**: a single database instance persists all application data.
 - **Vector store server (1 instance)**: a single instance stores the FAQ embeddings and answers similarity searches. It is optional: if it is missing or unreachable, FAQ matching falls back to full-text search alone.
-- **SMTP server**: notification e-mails (booking and cancellation notices, and the link that verifies a new account) are handed to an external SMTP server. In development the backend prints them instead.
+- **SMTP server**: notification e-mails (booking and cancellation notices) are handed to an external SMTP server. In development the backend prints them instead.
 
 ### Distribution of components
 
@@ -120,7 +120,7 @@ The relevant domain events, per context, are:
 
 - Booking context: ShiftDeclared and ShiftWithdrawn, which change the availability of an office; AppointmentBooked and AppointmentCancelled, which trigger the notifications;
 - Support context: QuestionAnswered and QuestionUnanswered (an unanswered question, or one whose answer the student rejects, is what triggers the booking flow), QuestionResolved, and FaqChanged, which brings the FaqIndex in line with the published FAQs;
-- Identity context: UserRegistered, which triggers the e-mail with the verification link, and UserVerified, which activates the account.
+- Identity context: UserRegistered, which creates an account that can sign in straight away.
 
 ### Object-oriented modelling
 
@@ -144,7 +144,7 @@ The second diagram addresses concurrent reservations. Since an office may be sta
 
 <p align="center"><img src="assets/seq2.svg" alt="Concurrent booking"></p>
 
-Notification e-mails are sent to the SMTP server only once the transaction that booked or cancelled the appointment has committed, so no e-mail goes out for a booking that fails; delivery is best-effort, and a notification failure is logged without undoing the booking. Changes to the FAQs reach the vector store in the same way: after the transaction commits, and without blocking the change if the vector store is down. Authentication is token-based: a new account stays inactive until its owner opens the verification link e-mailed at registration; upon login, the backend issues an opaque token, stored in the database, which the client attaches to every subsequent request and the backend looks up before serving it; the token is deleted at logout.
+Notification e-mails are sent to the SMTP server only once the transaction that booked or cancelled the appointment has committed, so no e-mail goes out for a booking that fails; delivery is best-effort, and a notification failure is logged without undoing the booking. Changes to the FAQs reach the vector store in the same way: after the transaction commits, and without blocking the change if the vector store is down. Authentication is token-based: a new account can sign in right after registration; upon login, the backend issues an opaque token, stored in the database, which the client attaches to every subsequent request and the backend looks up before serving it; the token is deleted at logout.
 
 ## Behaviour
 
@@ -154,7 +154,7 @@ The one domain concept whose state evolves through multiple transitions is Appoi
 
 <p align="center"><img src="assets/appointment.svg" alt="Appointment"></p>
 
-Two other concepts have a simpler, two-state life: a User is created inactive and becomes active when the verification link is opened, and an Inquiry is created unresolved and becomes resolved when the student marks the suggested answer as satisfactory, which is only possible if an answer was suggested.
+Two other concepts have a simpler, two-state life: a User is created active and becomes inactive only if an administrator deactivates the account, which stops its logins while keeping its appointments, and an Inquiry is created unresolved and becomes resolved when the student marks the suggested answer as satisfactory, which is only possible if an answer was suggested.
 
 ## Data-related aspects
 

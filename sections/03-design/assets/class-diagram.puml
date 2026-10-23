@@ -12,7 +12,7 @@ package "Identity Context" {
     isActive : bool
     credentials : Credentials
     authenticate(password) : bool
-    verifyEmail()
+    deactivate()
   }
 
   enum Role <<value object>> {
