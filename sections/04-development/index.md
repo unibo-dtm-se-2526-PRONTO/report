@@ -28,6 +28,10 @@ We enforce the convention with commitlint, which a GitHub Actions workflow runs 
 
 **Network protocols.** Clients talk to the backend over **HTTP** (HTTPS in production), following the REST framework. Every interaction in Pronto is a synchronous request/response exchange. HTTP also works from any browser without plugins, and Django and Django REST Framework (DRF) support it natively. The backend reaches PostgreSQL through its own wire protocol over TCP, Chroma through its HTTP API, and the mail server through **SMTP** (Simple Mail Transfer Protocol). SMTP is used only when the `EMAIL_BACKEND` environment variable selects Django's SMTP backend (with TLS on port 587 by default). 
 
+The deployment diagram below shows the nodes of the running system and the protocol used on each connection.
+
+<p align="center"><img src="assets/deployment-protocols.svg" alt="Deployment diagram with network protocols"></p>
+
 **Data representation.** Data in transit is encoded as **JSON**. It is the native format of both ends: DRF uses JSON by default, and the frontend reads it with `fetch` with no extra library. 
 The language of stored texts (office names, FAQs) is chosen with the `?lang=it|en` query parameter. 
 
