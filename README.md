@@ -1,19 +1,10 @@
-# Pronto — Report
+# Pronto - Report
 
-Software Engineering project work report for **Pronto**, a web application that
-automates the phone helpdesk of the Campus of Cesena (University of Bologna).
-Pronto lets students book appointments with university offices and get
-FAQ-based answers before confirming a booking.
+This repository contains the engineering report of Pronto, a web application that automates the phone helpdesk of the Campus of Cesena (University of Bologna).
 
 ## Abstract
 
-Student support at the Campus of Cesena is handled through a phone
-helpdesk, where many recurring questions could be answered without human
-intervention. Pronto is a web application that automates this process: it lets
-students book appointments with the relevant university offices and, before
-confirming, answers to frequently asked questions so that simple
-requests are resolved immediately. This repository contains the full
-engineering report, documenting the decisions behind the implementation.
+"Pronto" is a web application that replaces the telephone helpdesk of the Cesena Campus of the University of Bologna with a self-service platform. A student picks a university office and types a question. The system first suggests the closest answer from a knowledge base of real, anonymised past questions; if that answer does not help, the student books one of the office's free time slots. Employees declare their working shifts, and each booking goes to an employee who is free in that slot, so the work is spread evenly among colleagues and nobody is booked twice for the same slot. Bookings and cancellations are confirmed by e-mail. The project was developed for the Software Engineering course at Unibo. It follows a 3-tier architecture built with Django and Vue.js, and matches FAQs by combining PostgreSQL full-text search with semantic search. Development follows Git Flow and Conventional Commits, and GitHub Actions runs the tests on every push.
 
 ## Project repositories
 
@@ -32,34 +23,16 @@ Developed for the [Software Engineering course](https://www.unibo.it/) of the
 Digital Transformation Management master's degree, University of Bologna. Supervisor: Prof. Giovanni Ciatto
 ([`gciatto`](https://github.com/gciatto)).
 
-## Contributing to the report
+## Running the report locally
 
-The report content lives in the `sections/` directory as Markdown files. The
-website is generated automatically by GitHub Actions on every push to `main`,
-so committing changes is enough to update the published site.
+The report is a [Jekyll](https://jekyllrb.com/) website: its content lives in `index.md` and in the `sections/` directory as Markdown files.
 
-To preview the site locally you need **Ruby** installed
-([instructions](https://jekyllrb.com/docs/installation/)). Then, from the root
-of the repository:
+1. Install Ruby 3.x ([instructions](https://jekyllrb.com/docs/installation/)); on macOS, e.g. `brew install ruby`.
+2. From the root of the repository, install the dependencies and start the server:
 
-```bash
-# 1. install the Jekyll dependencies
-bundler install
+   ```bash
+   bundle install
+   bundle exec jekyll serve
+   ```
 
-# 2. serve the site locally
-bundler exec jekyll serve
-```
-
-The preview will be available at <http://127.0.0.1:4000> (the exact URL is
-printed by the command). Any change to the `.md` files is reflected live until
-you stop the server with `Ctrl+C`.
-
-<!-- References -->
-
-[template-repo]: https://github.com/unibo-dtm-se/template-project-work
-[template-site]: https://unibo-dtm-se.github.io/template-project-work
-[course-site]: https://www.unibo.it/en/study/phd-professional-masters-specialisation-schools-and-other-programmes/course-unit-catalogue/course-unit/2024/466765
-[general-forum]: https://virtuale.unibo.it/mod/forum/view.php?id=1885625
-[project-forum]: https://virtuale.unibo.it/mod/forum/view.php?id=1885626
-[markdown-cheatsheet]: https://www.markdownguide.org/cheat-sheet
-[jeckyll-home]: https://jekyllrb.com/
+3. Open <http://127.0.0.1:4000> in the browser. Jekyll rebuilds the site whenever a `.md` file changes, so a page refresh shows the edit. Stop the server with `Ctrl+C`.
