@@ -40,7 +40,7 @@ The language of stored texts (office names, FAQs) is chosen with the `?lang=it|e
 - **full-text search** (`SearchVector`, `SearchQuery`, `SearchRank`) with the `italian` and `english` text-search configurations, which is the first step of FAQ matching;
 - **constraints and row locks**: a partial unique constraint on (employee, start) among booked appointments makes concurrent bookings safe, and `select_for_update` locks the rows involved when an appointment is booked or cancelled.
 
-The second step of FAQ matching uses **Chroma**, a vector database queried through its Python client. Embeddings are computed inside the backend with the multilingual model `paraphrase-multilingual-MiniLM-L12-v2`.
+The second step of FAQ matching uses **Chroma**, a vector database queried through its Python client, and runs only when full-text search finds nothing relevant enough. Embeddings are computed inside the backend with the multilingual model `paraphrase-multilingual-MiniLM-L12-v2`. Each step has its own threshold, calibrated on the real FAQ dataset: a rank of 0.45 for full-text search (`FAQ_MATCH_MIN_RANK`) and a cosine similarity of 0.7 for semantic search (`FAQ_SEMANTIC_MIN_SIMILARITY`). If Chroma cannot be reached, the error is logged and matching falls back to full-text search alone; the index can be rebuilt from the database with the `rebuild_faq_index` command.
 
 **Authentication.** Clients authenticate with **DRF token authentication**. We chose DRF instead of an external auth service, such as JWT, because it's built-in. At login the backend issues a token, stored in the database; the frontend keeps it in `localStorage` and sends it in the `Authorization: Token <key>` header of each request; logout deletes it on the server.
 Passwords are hashed with Django's default algorithm (PBKDF2). Registration is open only to university addresses: `@studio.unibo.it` addresses register as students, `@unibo.it` addresses as employees, all others are refused.
@@ -76,11 +76,11 @@ The frontend depends only on `vue`, `vue-router` (navigation and role guard) and
 | Type checking | mypy | vue-tsc |
 | Task runner | Poe the Poet | npm scripts |
 
-Docker Compose starts the whole system locally (PostgreSQL, Chroma, backend and frontend), with the same database engine used in production. GitHub Actions runs the CI, semantic-release publishes the releases, and Renovate keeps dependencies up to date with automatic pull requests.
+Docker Compose starts the whole system locally (PostgreSQL, Chroma, backend and frontend), with the same database engine used in production; the backend starts, applying the migrations, only once PostgreSQL and Chroma pass their health checks. Tests run on an in-memory SQLite database by default and on PostgreSQL when `TEST_DATABASE_URL` is set, as the CI does, so that full-text search and concurrent bookings are tested on the production engine. GitHub Actions runs the CI, semantic-release publishes the releases, and Renovate keeps dependencies up to date with automatic pull requests.
 
 **External services.**
 
 - **Neon**, a managed PostgreSQL service hosting the shared development database; the CI applies the migrations to it after each merge into `develop`;
-- an **SMTP server**, which delivers the booking and cancellation e-mails; in development the backend prints them to the console instead;
+- an **SMTP server**, which delivers the booking and cancellation e-mails; in development the backend prints them to the console instead. E-mails are sent only after the database transaction commits, on a best-effort basis: a failed e-mail is logged and does not undo the booking;
 - **GitHub** (repositories, Actions, Releases) and **PyPI/TestPyPI**, where the backend is published as the `pronto-helpdesk` package.
 

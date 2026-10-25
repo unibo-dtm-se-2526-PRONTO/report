@@ -5,37 +5,28 @@ participant "FaqMatchingService" as faqsvc
 database "Database" as db
 database "Vector store" as vs
 
-student -> routes : POST /questions (office, question)
-routes -> faqsvc : match(office, question)
+student -> routes : POST /questions (question)
+routes -> faqsvc : match(question)
 
-faqsvc -> db : full-text search\nFAQs in office
+faqsvc -> db : full-text search\nFAQs of every office
 db --> faqsvc : best match (if rank ≥ threshold)
-opt no full-text match in office
+opt no full-text match
   faqsvc -> faqsvc : embed question\n(local model)
-  faqsvc -> vs : similarity search\nFAQs in office
+  faqsvc -> vs : similarity search\nFAQs of every office
   vs --> faqsvc : nearest FAQ (if similarity ≥ threshold)
   note right of vs : store unreachable:\nerror logged,\nno semantic match
 end
+faqsvc --> routes : Match(answer, office, score) or none
 
-alt match found in office
-  faqsvc --> routes : Match(answer, office, score)
-else no match in office
-  faqsvc -> db : full-text search\nFAQs across all offices
-  db --> faqsvc : best match elsewhere (if any)
-  opt no full-text match elsewhere
-    faqsvc -> vs : similarity search\nFAQs across all offices
-    vs --> faqsvc : nearest FAQ elsewhere (if any)
-  end
-  faqsvc --> routes : Match(answer, actualOffice, score) or none
-end
-
-routes -> db : record question\n(+ matched FAQ, method)
-routes --> student : suggested answer\n(+ correct office, if reassigned)
+routes -> db : record question\n(+ matched FAQ, office, method)
+routes --> student : suggested answer\n(+ office it belongs to)
 
 alt answer resolves the request
   student -> routes : mark as satisfactory
   note right : flow ends, no appointment created
-else not satisfactory (or no match at all)
-  student -> routes : book appointment\n(chosen or corrected office)
+else not satisfactory
+  student -> routes : book appointment\n(office of the answer)
+else no match at all
+  student -> routes : book appointment\n(office picked from the list)
 end
 @enduml

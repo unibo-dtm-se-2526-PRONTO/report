@@ -6,45 +6,24 @@ nav_order: 2
 
 # Concept
 
-Pronto is a web application that digitizes and automates the telephone-based helpdesk of the University of Bologna's Cesena Campus. Instead of calling, students use a self-service platform to book appointments with the relevant university office. Where possible, they get an answer straight away from an automatic FAQ-matching engine built on real, anonymised past questions and answers, and skip the appointment altogether.
+Pronto is a web application that aims to replace the telephone helpdesk of the University of Bologna's Cesena Campus. Instead of calling an office, students write their question on the platform. The system first looks for an answer among real, anonymised questions and answers from past helpdesk requests, and only when that answer is not enough, does the student book an appointment with the office that can help.
 
 ## Type of product
 
-Pronto is a client-server web application, structured as a 3-tier system: a single-page frontend shared by students and employees, an API backend that handles booking, FAQ matching, authentication, and notifications, and a data tier made of a relational database for persistence plus a vector store for the semantic part of FAQ matching. No native mobile app, CLI, or library is planned; every actor uses the system through a web browser.
+Pronto is a client-server web application with a 3-tier structure. A single-page frontend serves every role. The backend exposes a REST API for authentication, FAQ matching, booking and notifications. The data tier is a relational database, together with a vector store used by the semantic part of FAQ matching. There is no native mobile app: everyone uses Pronto from a desktop or mobile browser.
 
 ## Use case collection
 
-### Actors
+Pronto has three actors. Students need information from one of the campus offices (guidance, the student administration office, international relations, internships) and want either an immediate answer or an appointment. Employees work in one of these offices: they declare their weekly shifts, from which the system derives the bookable slots, and handle the appointments assigned to them. Administrators run the helpdesk: they oversee all appointments and maintain users, offices and FAQs through the Django admin. Students and employees register by themselves, and their role follows from the domain of their institutional e-mail; an administrator account cannot be obtained through registration.
 
-Two primary roles use the system:
+Students use Pronto sporadically and from anywhere, while Employees use it every working day: they declare their shifts once, change them when needed, and follow the appointments as they arrive.
 
-- **Student**: needs information from a specific university office (e.g. the job orientation office, for internships) and wants either an immediate answer or an appointment.
-- **Employee**: a staff member of a university office who manages their own working shifts/availability and handles incoming appointment requests.
+A student writes a question in free text without choosing an office, since they often do not know which one is responsible. The system compares the question with the FAQs of every office and suggests the closest answer, together with the office it belongs to. If the answer resolves the request, the student says so and no appointment is created. Otherwise the student books a free slot with that office, or with one picked from the list when no answer was found. Students see the slots of an office, not of a person: the system assigns each booking to an employee who is free in that slot, so the work is spread among colleagues and nobody is booked twice for the same slot. 
 
-### Where are the users
+The question and the suggested answer travel with the appointment, so the employee knows what the student has already read. An appointment can be cancelled before it starts by the student, the employee or an administrator, and the employee marks it as completed after the meeting. 
 
-Students and employees access Pronto through a standard web browser from anywhere with internet access: on campus, at home, or on the move. The offices are on the Cesena Campus, but users do not need to be on site to use the system.
+E-mails tell the student and the employee when an appointment is booked or cancelled, so neither has to keep the application open.
 
-### When and how frequently do they interact with the system
+## Persistent data
 
-- Students interact **sporadically and on demand**, whenever they have a specific question or need (e.g. around enrollment or internship-search periods). Usage is expected to come in bursts around office-specific deadlines.
-- Employees interact **regularly, as part of their daily work routine**: they set up their availability once per period (e.g. weekly), then handle the resulting appointments as they arrive during working hours.
-
-### How do they interact with the system, and with which devices
-
-Both roles use the same responsive single-page web application, from desktop or mobile browsers. A student first asks a free-text question about a given office. The FAQ-matching engine suggests the closest answer from past questions, and the student decides whether it resolves their request. If it does, no appointment is created. Otherwise, the student browses that office's available time slots and books one, and the original question is attached to the appointment for the employee who handles it. E-mail notifications tell users when an appointment is booked or cancelled, so they do not need to keep the application open.
-
-### Does the system need to store user data
-
-Yes. Pronto persists:
-
-- **Identity data**: for students, name, surname, student ID (matricola), course of study, and institutional e-mail; for employees, name, surname, office, and working shifts. Passwords are stored hashed.
-- **Booking data**: appointments, each associated with a time slot, an office, the employee assigned to handle it, a free-text question/note from the student (with the FAQ answer they were suggested, if any), and a lifecycle status (booked, cancelled, or completed).
-- **Question data**: every question asked, with the office it was asked about and the FAQ suggested for it. These records have no link to the student who asked and are used to find out what the knowledge base does not cover yet.
-- **Knowledge base data**: a FAQ collection built from real, anonymised historical helpdesk questions and answers, used to suggest an answer to a student's question before any appointment is created.
-
-All persistent data lives in a single relational database on the backend. The only other store is the vector store used by FAQ matching, which holds the embeddings of the published FAQs. That data is derived: nobody edits it by hand, and it can be rebuilt from the database at any time. Clients keep only transient UI/session state and store no sensitive data locally.
-
-### Multiple roles
-
-Pronto distinguishes between the **Student** and **Employee** roles at registration time, and the authenticated user's role decides which actions are available and which data is visible. A third role, **Administrator**, is reserved for the staff who run the helpdesk. It cannot be obtained through registration; administrators oversee all appointments and maintain offices and FAQs.
+All persistent data lives in a single relational database. For every user Pronto stores name, surname, institutional e-mail and role, with the password hashed; students also have their student ID (matricola) and degree programme, employees their office and weekly shifts. Each appointment records the student, the office, the assigned employee, the slot, the question with its language, the FAQ the student was shown (if any) and a status: booked, cancelled or completed. Every question asked is stored with its office, the suggested FAQ and whether that answer solved the request, but with no link to the student who asked it: these records show what the knowledge base does not cover yet. The FAQs, in Italian and English, come from real helpdesk requests and are anonymised before being imported. The vector store holds only the embeddings of the published FAQs, which are derived data and can be rebuilt from the database at any time. The browser keeps only the login token and the chosen language.
