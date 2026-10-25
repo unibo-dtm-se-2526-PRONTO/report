@@ -115,7 +115,7 @@ All other technical choices (Django, PostgreSQL and Chroma for FAQ matching, Vue
 - **AC17** (NFR2): under normal load, FAQ matching, slot search and booking each answer within a few seconds.
 - **AC18** (NFR3): passwords are stored only as hashes; a request without a valid token is rejected, and a token stops working after logout.
 - **AC19** (NF1-NF6): if achieved, this will be verified through manual and automated testing.
-- **AC20** (I1): the published package and source code declare and require Python >= 3.11, and the game runs correctly under that version.
+- **AC20** (I1): the published package and source code declare and require Python >= 3.9, and the software runs correctly under that version.
 
 ## Glossary
 
