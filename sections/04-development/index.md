@@ -26,6 +26,19 @@ We enforce the convention with commitlint, which a GitHub Actions workflow runs 
 
 ## Implementation details
 
+**Backend structure.** The backend is a Django project split into four apps, one per bounded context plus the shared kernel: `accounts` (Identity), `offices` (Office), `booking` (Booking) and `faq` (Support). The components of the [Design](../03-design/#system-components) map onto the code as follows. The services are modules of functions rather than classes; only the matchers are classes, sharing the `Matcher` interface.
+
+| Design component | Code | Role |
+|---|---|---|
+| Routes | `*/urls.py`, `*/views.py`, `*/serializers.py`, `pronto/permissions.py` | DRF views and serializers: authentication, role checks, validation, call to a service |
+| BookingService | `booking/services.py` | availability, booking with employee assignment, cancellation, completion, shifts |
+| InquiryService | `faq/services.py` | records a question with its match, resolves it |
+| FaqMatchingService | `faq/matching.py` | `find_best_match` and the `FullTextMatcher`, `SemanticMatcher` and `CascadeMatcher` classes |
+| NotificationService | `booking/notifications.py` | renders the e-mails and sends them after the commit |
+| ORM and repositories | `*/models.py` | Django models; each model's manager is the repository of its aggregate |
+| Vector index | `faq/vector_index.py`, `faq/signals.py` | embeddings in Chroma, kept in step with the FAQs by signals after each commit |
+| Admin interface | `*/admin.py` | Django admin pages for the helpdesk staff |
+
 **Network protocols.** Clients talk to the backend over **HTTP** (HTTPS in production), following the REST framework. Every interaction in Pronto is a synchronous request/response exchange. HTTP also works from any browser without plugins, and Django and Django REST Framework (DRF) support it natively. The backend reaches PostgreSQL through its own wire protocol over TCP, Chroma through its HTTP API, and the mail server through **SMTP** (Simple Mail Transfer Protocol). SMTP is used only when the `EMAIL_BACKEND` environment variable selects Django's SMTP backend (with TLS on port 587 by default). 
 
 The deployment diagram below shows the nodes of the running system and the protocol used on each connection.
@@ -38,7 +51,7 @@ The language of stored texts (office names, FAQs) is chosen with the `?lang=it|e
 **Database queries.** The application data is relational and strongly linked (appointments reference students, employees, offices and FAQs), so we store it in **PostgreSQL** and query it through the **Django ORM**. The ORM keeps queries in Python and generates the schema migrations. Two features of PostgreSQL are used directly through the ORM:
 
 - **full-text search** (`SearchVector`, `SearchQuery`, `SearchRank`) with the `italian` and `english` text-search configurations, which is the first step of FAQ matching;
-- **constraints and row locks**: a partial unique constraint on (employee, start) among booked appointments makes concurrent bookings safe, and `select_for_update` locks the rows involved when an appointment is booked or cancelled.
+- **constraints and row locks**: a partial unique constraint on (employee, start) among booked appointments makes concurrent bookings safe, and `select_for_update` locks the rows involved: the employee when an appointment is booked or a shift is declared or withdrawn, so a shift cannot change under a booking and two shifts declared together cannot overlap; the appointment when it is cancelled, so a double click cannot cancel it twice or send the e-mails twice.
 
 The second step of FAQ matching uses **Chroma**, a vector database queried through its Python client, and runs only when full-text search finds nothing relevant enough. Embeddings are computed inside the backend with the multilingual model `paraphrase-multilingual-MiniLM-L12-v2`. Each step has its own threshold, calibrated on the real FAQ dataset: a rank of 0.45 for full-text search (`FAQ_MATCH_MIN_RANK`) and a cosine similarity of 0.7 for semantic search (`FAQ_SEMANTIC_MIN_SIMILARITY`). If Chroma cannot be reached, the error is logged and matching falls back to full-text search alone; the index can be rebuilt from the database with the `rebuild_faq_index` command.
 

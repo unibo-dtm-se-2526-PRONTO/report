@@ -1,32 +1,40 @@
 @startuml seq1
+skinparam shadowing false
 actor Student as student
 participant "Routes" as routes
+participant "InquiryService" as inq
 participant "FaqMatchingService" as faqsvc
 database "Database" as db
 database "Vector store" as vs
 
 student -> routes : POST /questions (question)
-routes -> faqsvc : match(question)
+routes -> inq : ask(question, language)
+inq -> faqsvc : findBestMatch(question, no office)
 
-faqsvc -> db : full-text search\nFAQs of every office
-db --> faqsvc : best match (if rank ≥ threshold)
+faqsvc -> db : full-text search over the\npublished FAQs of every office
+db --> faqsvc : best FAQ with rank ≥ threshold, or none
 opt no full-text match
   faqsvc -> faqsvc : embed question\n(local model)
-  faqsvc -> vs : similarity search\nFAQs of every office
-  vs --> faqsvc : nearest FAQ (if similarity ≥ threshold)
+  faqsvc -> vs : nearest FAQ question in the same\nlanguage, among the published FAQs
+  vs --> faqsvc : FAQ and similarity
   note right of vs : store unreachable:\nerror logged,\nno semantic match
+  faqsvc -> faqsvc : keep it if similarity ≥ threshold
 end
-faqsvc --> routes : Match(answer, office, score) or none
+faqsvc --> inq : Match(FAQ, score, method) or none
 
-routes -> db : record question\n(+ matched FAQ, office, method)
-routes --> student : suggested answer\n(+ office it belongs to)
+inq -> db : record inquiry\n(office of the FAQ, FAQ, score, method)
+inq --> routes : inquiry
+routes --> student : inquiry id, suggested answer,\noffice it belongs to
 
-alt answer resolves the request
-  student -> routes : mark as satisfactory
+alt the answer is satisfactory
+  student -> routes : POST /questions/{id}/resolve
+  routes -> inq : resolve(inquiry)
   note right : flow ends, no appointment created
-else not satisfactory
-  student -> routes : book appointment\n(office of the answer)
-else no match at all
-  student -> routes : book appointment\n(office picked from the list)
+else not satisfactory, or no match at all
+  student -> routes : GET /offices/{office}/availability?date
+  note right : office of the answer,\nor one picked from the list
+  routes --> student : free slots
+  student -> routes : POST /appointments\n(office, slot, question, suggested FAQ)
+  note right : see the concurrent booking diagram
 end
 @enduml

@@ -6,159 +6,192 @@ nav_order: 4
 
 # Design
 
-This chapter describes the design strategies adopted to meet the requirements identified in the analysis. The design is presented independently of the technologies chosen for the implementation.
+This chapter describes how Pronto is designed to meet the requirements. It names concepts (a relational database, an object-relational mapper, a vector store) rather than products: the technologies that realise them are chosen and justified in the [Development](../04-development/) section.
+
+## Table of contents
+
+- [Architecture](#architecture)
+  - [Architectural style](#architectural-style)
+  - [Detailed architecture](#detailed-architecture)
+  - [System components](#system-components)
+- [Infrastructure](#infrastructure)
+  - [Components](#components)
+  - [Distribution](#distribution)
+  - [Naming and discovery](#naming-and-discovery)
+- [Modelling](#modelling)
+  - [DDD modelling](#ddd-modelling)
+  - [OOP modelling](#oop-modelling)
+- [Interactions](#interactions)
+- [Behaviour](#behaviour)
+- [Data persistence](#data-persistence)
 
 ## Architecture
 
 ### Architectural style
 
-Pronto has a **layered** architectural style. The system is organised into four logical layers, each interacting only with the adjacent ones:
+Pronto has a layered architecture. Each of its four logical layers talks only to the adjacent ones:
 
-- **Presentation layer**: the client application, responsible for the user interface;
-- **Application layer**: the backend, responsible for all business logic;
-- **Data access layer**: the object-relational mapping component (ORM) and the vector index, responsible for translating between domain objects and storage operations;
-- **Persistence layer**: the database, responsible for durably storing data, and the vector store, which holds the embeddings of the published FAQs used by semantic matching.
+- the presentation layer is the client application and renders the user interface;
+- the application layer is the backend and holds all the business logic;
+- the data access layer translates between domain objects and storage operations, through an object-relational mapper (ORM) for the database and a vector index for the vector store;
+- the persistence layer stores the data: a relational database holds the application state, and a vector store holds the embeddings of the published FAQs used by semantic matching.
 
-We chose this style because every interaction in the system is a synchronous request/response exchange.
+We chose this style because every interaction in Pronto is a synchronous request and response.
 
-<p align="center"><img src="assets/layered-diagram.svg" alt="Layered Architecture Diagram"></p>
+<p align="center"><img src="assets/layered-diagram.svg" alt="Layered architecture diagram"></p>
 
-We considered and discarded the following alternatives:
+We considered three alternatives and discarded them:
 
-- **Event-based**: it implies asynchronous, decoupled communication through a publish/subscribe mechanism, where producers are unaware of their consumers, which does not match Pronto's synchronous interactions.
-- **Object-based**: it implies communication through remote invocation of methods on distributed objects. Pronto's components communicate through explicit request/response message exchanges, not through remote method calls on shared objects.
-- **Shared dataspace**: Pronto does rely on a database and a vector store, but both are accessed by a single component (the backend).
+- an event-based style assumes asynchronous communication through publish/subscribe, with producers unaware of their consumers, and Pronto's interactions are synchronous;
+- an object-based style assumes remote invocation of methods on distributed objects, while Pronto's components exchange explicit requests and responses;
+- a shared dataspace would need several components reading and writing the same store, and in Pronto only the backend reaches the database and the vector store.
 
-### Concrete architecture
+### Detailed architecture
 
-Pronto adopts a **3-tier** architecture:
+Pronto is a 3-tier system:
 
-- **Presentation tier**: a single-page application running in the user's browser, used by students and employees, and an administration interface, served by the backend, used by the staff who run the helpdesk;
-- **Logic tier**: the backend, exposing the API consumed by clients and encapsulating booking, FAQ, authentication and notification logic; comprises the ORM component and the vector index;
-- **Data tier**: a relational database and a vector store.
+- the presentation tier has two clients: a single-page application running in the browser, used by students and employees, and an administration interface served by the backend, used by the staff who run the helpdesk;
+- the logic tier is the backend: it exposes the API the single-page application calls, holds the booking, FAQ, authentication and notification logic, and runs the ORM and the vector index in its own process;
+- the data tier is the relational database and the vector store.
 
-The four logical layers map onto the three tiers as follows: the presentation layer coincides with the presentation tier; the application and data access layers together form the logic tier, since the ORM component and the vector index run in the same process as the backend; the persistence layer coincides with the data tier.
+The layers map onto the tiers directly. The presentation layer is the presentation tier, the application and data access layers together make up the logic tier, and the persistence layer is the data tier.
 
-### Responsibilities of each component
+### System components
 
-**Presentation tier**: the single-page application renders the user interface and collects user input. It translates user actions into requests towards the backend's API, and renders the responses it receives, including FAQ suggestions, booking confirmations and authentication state. The administration interface lets the helpdesk staff review and publish FAQs, maintain offices, and oversee users and appointments.
+The single-page application renders the interface and collects input. It turns user actions into API requests and shows the responses: FAQ suggestions, free slots, bookings and the user's own account. It keeps the authentication token and the booking in progress, nothing else. The administration interface lets the helpdesk staff review and publish FAQs, maintain offices, users and employees' offices, and oversee appointments and the questions students asked. It works on the data access layer directly, without going through the API.
 
-**Logic tier (backend):** it encapsulates all business logic, and is internally organised into the following components:
+The backend is divided into software components: modules of code, each with one responsibility, that handle the domain entities described in [DDD modelling](#ddd-modelling) without being entities themselves. A request enters through the Routes, which pass it to a service; the services apply the business rules and read and write the entities through the data access layer.
 
-- **Routes**: expose the API endpoints, authenticate the caller, check that their role allows the action, parse and validate incoming requests, and delegate to the appropriate service;
-- **Services**: implement the business rules: the matching of questions against the FAQs, the computation of availability and the assignment of bookings, the lifecycle of appointments;
-- **Repositories**: mediate between services and the data access layer, encapsulating domain-specific query logic behind a stable interface and keeping services decoupled from the underlying persistence technology;
-- **NotificationService**: reacts to lifecycle events raised by the services (an appointment being booked or cancelled) and, once the change is committed, delivers the corresponding e-mail to an SMTP server;
-- **Data access layer**: the ORM translates domain objects into relational operations and vice versa, allowing the logic tier to work with objects instead of hand-written queries; the vector index turns texts into embeddings, with a model run inside the backend itself, and reads and writes them in the vector store.
+- Routes expose the API endpoints. They authenticate the caller, check that the caller's role allows the action, validate the request and hand it to a service. Plain reads, such as the list of offices or of the caller's appointments, go straight to the data access layer, scoped to what the caller may see.
+- BookingService computes availability, assigns each booking to an employee, checks shifts as they are declared and withdrawn, and moves appointments through their lifecycle.
+- InquiryService records each question with the FAQ found for it, and marks it resolved when the student accepts the answer.
+- FaqMatchingService finds the published FAQ that best answers a question, first with full-text search in the database and then, if needed, with similarity search over the vector index.
+- NotificationService is called by BookingService when an appointment is booked or cancelled, and hands the e-mails to an SMTP server once the change is committed.
+- The data access layer has two parts. The ORM maps domain objects to relational tables and gives each aggregate its collection interface, which is where the repositories of the domain model live. The vector index computes embeddings with a model that runs inside the backend, and reads and writes them in the vector store. It is updated whenever a FAQ changes, after the change is committed.
 
-**Data tier:** the database durably stores all application state: users and student profiles, offices, employees and their shifts, appointments, FAQs, and the questions students ask. The vector store keeps one embedding per published FAQ and language. This is derived data: it is never edited directly and can be rebuilt from the database at any time.
+The database stores all application state: users and student profiles, offices, employees and their shifts, appointments, FAQs and the questions students ask. The vector store keeps one embedding per published FAQ and language. 
 
-<p align="center"><img src="assets/components.svg" alt="Components Diagram"></p>
+<p align="center"><img src="assets/components.svg" alt="Components diagram"></p>
 
 ## Infrastructure
 
-### Infrastructural components
+### Components
 
-Pronto's infrastructure comprises the following components:
+- Clients (N instances): each student or employee uses Pronto from a web browser running the single-page application, and the helpdesk staff open the administration interface in a browser too. There are as many clients as connected users.
+- Web server for the client application (1 instance): it serves the single-page application's code to browsers. The application then calls the backend, which runs on a different origin and accepts cross-origin requests from this one only.
+- Application server (1 instance): it runs the backend, which serves the API and the administration interface. The embedding model for semantic matching runs inside this process, so there is no external embedding service.
+- Database server (1 instance): it persists all application data.
+- Vector store server (1 instance): it stores the FAQ embeddings and answers similarity searches. It is optional: when it is not configured or cannot be reached, FAQ matching uses full-text search alone.
+- SMTP server: an external mail server delivers booking and cancellation notices. In development the backend prints the e-mails to its console instead.
 
-- **Clients (N instances)**: each user, either a student or an employee, interacts with the system through a web browser running the single-page application; the helpdesk staff use the administration interface from a browser too. The number of client instances therefore equals the number of concurrently connected users.
-- **Application server (1 instance)**: a single instance of the backend serves the API consumed by clients and the administration interface. The embedding model used by semantic matching runs inside this process, so no external embedding service is involved.
-- **Database server (1 instance)**: a single database instance persists all application data.
-- **Vector store server (1 instance)**: a single instance stores the FAQ embeddings and answers similarity searches. It is optional: if it is missing or unreachable, FAQ matching falls back to full-text search alone.
-- **SMTP server**: notification e-mails (booking and cancellation notices) are handed to an external SMTP server. In development the backend prints them instead.
+### Distribution
 
-### Distribution of components
+Clients run wherever the users are. The web server, the backend, the database and the vector store run as containers on one host and share a private network. Only the backend connects to the database and the vector store. The repositories configure this single-host deployment with every port published on the host's loopback interface only, so nothing is reachable from outside the machine. A public deployment keeps the same layout and puts the web server and the backend behind a public hostname reached over HTTPS.
 
-Clients and server are geographically distributed: clients run wherever users are, and reach the server over the public Internet through secure connections.
-Backend, database and vector store run as containers on the same host, attached to a private network: only the backend connects to the database and the vector store, which are exposed outside that network only to the host itself. During development, the team can also work against a shared database hosted by a managed provider, reached over an encrypted connection; its schema is kept in step with the integration branch by the CI pipeline.
-
-The SMTP server is a third-party service, reached by the backend through outbound connections; its physical location is outside our control. The embedding model is downloaded from a public model repository the first time it is needed, and cached on the application server afterwards.
+The SMTP server is a third-party service that the backend reaches through outbound connections, and we do not control where it runs. The embedding model is downloaded from a public model repository the first time it is needed and cached on the application server afterwards.
 
 ### Naming and discovery
 
-Clients discover the server through public DNS: the application is reached through a stable hostname, resolved by the standard DNS infrastructure. The backend discovers the database and the vector store through the name-based service discovery offered by the container runtime: components on the private network are referred to by stable, logical service names, which the environment resolves at runtime and which the backend reads from its configuration. The SMTP server and the hosted database are discovered through public DNS, like any external service.
+The single-page application finds the backend through a base URL fixed in its configuration when it is built. In the single-host deployment both the application and the backend are reached at `localhost`; a public deployment would give them a hostname resolved through public DNS, and the base URL would point to it. Inside the private network, the backend finds the database and the vector store by the logical service names the container runtime resolves. The SMTP server and the hosted development database are found through public DNS, like any external service.
 
 ## Modelling
 
-### Domain-driven design (DDD) modelling
+### DDD modelling
 
-**Bounded contexts**
+#### Bounded contexts
 
-Pronto's domain decomposes into three bounded contexts:
+Pronto's domain splits into three bounded contexts:
 
-- **Booking context**: everything concerning the reservation of appointments with university offices: the employees staffing them, their shifts, the availability derived from those shifts, and the lifecycle of an appointment;
-- **Support context**: the knowledge base answering students' questions before a booking takes place: the FAQs, the questions students ask, and the matching between the two;
-- **Identity context**: users, roles, credentials and authentication.
+- the Identity context holds the people who use Pronto: their accounts, roles, credentials and the personal data each role requires;
+- the Booking context covers reserving appointments with university offices: the employees staffing them, their shifts, the availability derived from those shifts, and the lifecycle of an appointment;
+- the Support context is the knowledge base that answers students' questions before any booking: the FAQs, the questions students ask, and the matching between the two.
 
-**Office** is shared by the Booking and the Support contexts, which both file their data under an office: it forms a **shared kernel**, so that neither context has to depend on the other for it.
+<p align="center"><img src="assets/ddd.svg" alt="Bounded context map"></p>
 
-<p align="center"><img src="assets/ddd.svg" alt="Domain model"></p>
+#### Identity context concepts
 
-**Domain concepts**
+- User is the aggregate root. It is a person using Pronto, identified by an institutional e-mail address, with a name, a Role, Credentials and an active flag. 
+- Role is a value object: student, employee or administrator. Students and employees get it from the domain of their e-mail address at registration; administrators are created by the staff.
+- Credentials is a value object holding the password hash and the time of the last login.
+- StudentProfile is an entity inside the User aggregate, holding the student ID and degree programme. 
 
-Within the Booking context, **Appointment** is an entity and an aggregate root, binding the student, the handling employee, the Office, and the TimeSlot (a value object) it occupies; it also carries the student's question and, if any, the FAQ the student was suggested and found unsatisfactory. **Shift** is an entity and the second aggregate root of the context: it is declared and withdrawn by an employee independently of any appointment, and it is the source from which availability is computed; changing a shift means withdrawing it and declaring another, so that the rules on both sides apply to every change. **Employee** is an entity that links a user with the employee role to the office they work for.
+#### Booking context concepts
 
-Within the Support context, **Faq** is an entity and an aggregate root, composed of a question and an answer, each in Italian and English, and filed under an office; only published FAQs are suggested. **Inquiry** is the second aggregate root: it records a question a student asked about an office, the FAQ it was matched to (if any), how relevant that FAQ was, and whether it answered the student's question. An inquiry keeps no link to the student who asked it, because its only purpose is to show what the knowledge base lacks. **Match** is a value object.
+- EmployeeProfile is an aggregate root: a user in the employee role and the office they work for. 
+- Shift is an entity inside the EmployeeProfile aggregate: a stretch of a weekday the employee is on duty every week. Availability is computed from the shifts and never stored. 
+- Appointment is the second aggregate root. It binds the student's User, the handling EmployeeProfile, the Office and the TimeSlot it occupies, and carries the question, its language and, if there was one, the FAQ the student was shown and did not find helpful. 
+- TimeSlot is a value object
+- AppointmentStatus is a value object: booked, cancelled or completed.
+- BookingService is a domain service spanning EmployeeProfile, Office and Appointment. It computes availability, assigns each booking to the least loaded free employee, declares and withdraws shifts, and drives the lifecycle of appointments.
+- AppointmentBooked and AppointmentCancelled are domain events raised by BookingService. NotificationService, a domain service, handles them by sending the e-mails once the change is committed.
 
-Within the Identity context, **User** is an entity and the aggregate root of the context, with **Role** (student, employee or administrator), **Credentials** and, for students only, **StudentProfile** (student ID and course of study) as value objects.
+#### Support context concepts
 
-**Repositories and services**
+- Faq is an aggregate root: a question and an answer, each in Italian and English, filed under an office.
+- Inquiry is the second aggregate root. It records a question a student asked, the FAQ it was matched to (if any), how relevant that FAQ was, which technique found it, and whether it answered the question.
+- Match is a value object: a suggested FAQ with its score and the MatchMethod (full-text or semantic) that found it, which says what the score measures.
+- FaqRepository and InquiryRepository are the collections of the two aggregates.
+- FaqIndex is a derived repository: the embeddings of the published FAQs, one per FAQ and language, stored in the vector store and searched by similarity. 
+- FaqMatchingService is a domain service that compares a question with the published FAQs and returns a Match, or nothing.
+- InquiryService is an application service on top of FaqMatchingService.
+- FaqChanged is a domain event raised whenever a FAQ is saved or deleted. The FaqIndex handles it after the commit, so it stays in step with the published FAQs.
 
-Each aggregate root is paired with a repository, modelling an abstract collection of aggregates: ShiftRepository, AppointmentRepository, FaqRepository, InquiryRepository and UserRepository. The FAQs have a second, derived representation, the **FaqIndex**, which stores their embeddings in the vector store and answers similarity searches; it is never written by the services directly, but kept in step with FaqRepository by reacting to every change of a FAQ.
 
-Three domain services capture operations that do not naturally belong to any single entity:
+The contexts relate through different patterns. Booking and Support are bound by a Shared Kernel. Booking is downstream of Identity and conforms to its model: an appointment refers to the student's User and an EmployeeProfile refers to the employee's User, as Identity defines them, with no translation. Booking is also downstream of Support, in one direction only: an appointment refers to the FAQ the student was shown, while nothing in Support knows about appointments. Support does not depend on Identity at all, since an inquiry records no user.
 
-- **FaqMatchingService**, which compares a question against the published FAQs and produces a Match. It combines two matchers in cascade, behind a common interface: full-text search first and, only if it finds nothing relevant enough, semantic search over the FaqIndex. Each matcher has its own score and threshold, and the scores of the two are never compared. The cascade runs on the FAQs of every office; when an office is given, it runs on that office first, and on every office only if it finds nothing there;
-- **BookingService**, which spans the Shift, Employee, Office and Appointment concepts: it computes availability, assigns each booking to an employee, and drives the lifecycle of appointments;
-- **NotificationService**, which reacts to the AppointmentBooked and AppointmentCancelled events and delivers the corresponding e-mails.
+### OOP modelling
 
-No factories are introduced, as aggregates are simple enough to be constructed directly.
+The table lists the main types the DDD model turns into.
 
-**Domain events**
+| Type | Description | Kind / role | Key attributes | Key methods |
+|---|---|---|---|---|
+| User | A person using Pronto, identified by their institutional e-mail | Entity| email, firstName, lastName, role, isActive, credentials | setPassword(password), checkPassword(password) |
+| Role | What a user may do, derived from the e-mail domain at registration | Value Object | STUDENT, EMPLOYEE, ADMIN | none |
+| Credentials | How a user proves who they are | Value Object | passwordHash, lastLogin | none |
+| StudentProfile | The data only a student has | Entity | matricola, degreeProgramme | clean(): refuses a profile for a user who is not a student |
+| Office | A helpdesk office students ask about and book with | Entity| code, name [it, en], contactEmail, slotDurationMinutes, isActive | none |
+| Language | The language of a question, a FAQ text or a student's e-mails | Value Object| IT, EN | none |
+| EmployeeProfile | A user in the employee role, staffing one office | Entity| user, office, shifts | none: changed through BookingService |
+| Shift | A stretch of a weekday the employee is on duty every week | Entity| weekday, startTime, endTime | none |
+| Appointment | A booked meeting between a student and an employee | Entity| student, employee, office, slot, status, questionText, questionLanguage, suggestedFaq | none: changed through BookingService |
+| TimeSlot | The moment an appointment occupies; its length is the office's slot duration | Value object | start | none |
+| AppointmentStatus | The lifecycle states of an appointment | Value Object | BOOKED, CANCELLED, COMPLETED | none |
+| Faq | A question and its answer, in Italian and English | Entity| office, question [it, en], answer [it, en], isActive | none |
+| Inquiry | A question a student asked and the FAQ suggested for it | Entity| id (UUID), office, text, language, matchedFaq, score, matchedBy, resolved | none: resolved through InquiryService |
+| Match | A FAQ suggested for a question, with its relevance | Value object | faq, score, matchedBy | officeCode(): the office the answer belongs to |
+| BookingService | The booking rules | Domain service | none | availableSlots(office, day), book(...), cancel(appointment, by), complete(appointment), declareShift(...), withdrawShift(shift) |
+| FaqMatchingService | Finds the FAQ that best answers a question | Domain service | none | findBestMatch(question, office, language) |none | bestMatch(question, language, candidates) |
+| NotificationService | Sends the e-mails of an appointment's lifecycle after the commit | Domain service | none | appointmentBooked(appointment), appointmentCancelled(appointment, by) |
+| FaqIndex | The embeddings of the published FAQs, one per FAQ and language | Repository (derived data) | none | syncFaq(faqId), rebuild(), nearest(question, language, faqIds) |
 
-The relevant domain events, per context, are:
-
-- Booking context: ShiftDeclared and ShiftWithdrawn, which change the availability of an office; AppointmentBooked and AppointmentCancelled, which trigger the notifications;
-- Support context: QuestionAnswered and QuestionUnanswered (an unanswered question, or one whose answer the student rejects, is what triggers the booking flow), QuestionResolved, and FaqChanged, which brings the FaqIndex in line with the published FAQs;
-- Identity context: UserRegistered, which creates an account that can sign in straight away.
-
-### Object-oriented modelling
-
-The class diagram below reifies the DDD model into concrete data types.
-
-The diagram rests on four modelling decisions. First, an Appointment references the booking student (a User) and the handling Employee, and the Employee must work for the Appointment's own Office. This invariant spans several objects and is not expressed by the structure itself: it holds by construction, because the BookingService only ever picks the employee among those of the office being booked. Second, an Appointment contains its TimeSlot by composition, since a slot has no meaning outside the appointment that occupies it; a slot is identified by its start alone, and its length is the slot duration of the office. Office is an independent entity referenced by association. Third, Match is a value object with no persistent identity: it is the output of FaqMatchingService, and what it carries (the FAQ, the score and the matcher that found it) is copied into the Inquiry recording the question. Fourth, the dependencies between the Booking and the Support contexts run one way only: an Appointment references the FAQ the student was suggested, while neither Faq nor Inquiry knows anything of appointments.
-
-The identifier of an Inquiry is a random UUID rather than a sequential number: it is handed to the client, which quotes it back to mark the question resolved, and a sequential identifier would let anyone resolve, or count, the questions of everybody else.
+The class diagram shows how the data types relate.
 
 <p align="center"><img src="assets/class-diagram.svg" alt="Class diagram"></p>
 
 ## Interactions
 
-All interactions in Pronto are synchronous request/response exchanges: the client calls the backend's API, and the backend reaches the database, the vector store and the SMTP server within the scope of each request.
+Every interaction in Pronto is a synchronous request and response. The client calls the backend's API, and the backend reaches the database, the vector store and the SMTP server within each request. E-mails are the one exception in timing: they leave only after the request's transaction commits.
 
-The first sequence diagram shows the main end-to-end flow. The student submits a question without choosing an office, since they often do not know which one is responsible; the backend forwards it to the FaqMatchingService, which searches the FAQs of every office in cascade: full-text search on the database first and, only if it finds nothing relevant enough, a similarity search on the vector store, over the embedding of the question computed locally. Each technique keeps its own score and threshold, and the first one to find a match wins; if the vector store cannot be reached, the error is logged and the full-text result alone is used. A match is returned together with the office that owns it, so the student learns which office handles their question and can book there directly. The question is recorded as an Inquiry, together with the suggested FAQ, and the suggestion is presented to the student. Only the student can decide to stop there; the system never resolves a request on their behalf. If the student marks the answer as satisfactory, the flow ends and no appointment is created. If they do not, the client requests the availability of the answer's office, or of an office the student picks from the list when no match was found at all, and the student picks a slot, which the BookingService turns into an appointment carrying the original question and the FAQ the student was suggested.
+The first sequence diagram shows the main flow. The student submits a question without choosing an office, since they often do not know which one is responsible. InquiryService passes it to FaqMatchingService, which searches the published FAQs of every office: full-text search in the database first and, only if that finds nothing above its threshold, a similarity search in the vector store with an embedding of the question computed locally. The first technique to find a match wins. If the vector store cannot be reached, the error is logged and the full-text result stands alone. The question is recorded as an Inquiry with the suggested FAQ, under that FAQ's office, and the student sees the answer and the office it belongs to.
+
+Only the student decides whether to stop there; the system never resolves a request on their behalf. If the student marks the answer as satisfactory, the flow ends and no appointment is created. If not, the client asks for the free slots of the answer's office, or of an office the student picks from the list when nothing matched, and the student books one. BookingService turns it into an appointment carrying the original question and the FAQ the student was shown.
 
 <p align="center"><img src="assets/seq1.svg" alt="FAQ-to-booking flow"></p>
 
-The second diagram addresses concurrent reservations. Since an office may be staffed by several employees, a time slot is not a single resource but a set of interchangeable ones: the BookingService selects the least loaded employee on duty and free in that slot, counting their booked appointments, and attempts the insertion. Two simultaneous requests may both read before either inserts, so they may pick the same employee. The persistence layer enforces the uniqueness of the (employee, time slot) pair among booked appointments, making the check-and-insert atomic: the first insertion succeeds and the second is rejected and rolled back. The BookingService then retries with the next available colleague, making at most one attempt per employee on duty, and refuses the booking only once every employee covering that slot has been taken. Each attempt also locks the chosen employee and checks again that they are still on duty, so that a shift withdrawn at the same moment cannot leave an appointment outside any shift; symmetrically, a shift that still covers booked appointments cannot be withdrawn.
 
-<p align="center"><img src="assets/seq2.svg" alt="Concurrent booking"></p>
-
-Notification e-mails are sent to the SMTP server only once the transaction that booked or cancelled the appointment has committed, so no e-mail goes out for a booking that fails; delivery is best-effort, and a notification failure is logged without undoing the booking. Changes to the FAQs reach the vector store in the same way: after the transaction commits, and without blocking the change if the vector store is down. Authentication is token-based: a new account can sign in right after registration; upon login, the backend issues an opaque token, stored in the database, which the client attaches to every subsequent request and the backend looks up before serving it; the token is deleted at logout.
 
 ## Behaviour
 
-Most of Pronto's components are stateless: the backend holds no per-user session in memory (authentication tokens are stored in the database), the FaqMatchingService computes matches from scratch on every request, and the client keeps only transient UI state. All persistent state lives in the database, and the only component allowed to update it is the backend's repository layer, always within the scope of a single request. The vector store holds no state of its own: its content is derived from the published FAQs, and is updated only after a change to them has been committed.
+Most components are stateless. The backend keeps no per-user session in memory, because tokens live in the database. FaqMatchingService computes each match from scratch, and the client keeps only the token and transient interface state. All persistent state is in the database, and only the backend writes to it, through the API or the administration interface, always within a single request. The vector store has no state of its own: its content is derived from the published FAQs and changes only after a FAQ change is committed.
 
-The one domain concept whose state evolves through multiple transitions is Appointment. An appointment is created in the BOOKED state, already assigned to an employee, and reaches one of two terminal states: CANCELLED, when the student, the assigned employee or an administrator calls it off before the slot starts, or COMPLETED, when the employee who handled the meeting marks it as concluded, which is only possible once the slot has started. A cancelled appointment stays on record, but no longer reserves its employee, so the slot becomes bookable again.
+Appointment's state goes through several transitions. It is created BOOKED, already assigned to an employee, and becomes CANCELLED when the student, the assigned employee or an administrator calls it off before the slot starts, or COMPLETED when the assigned employee marks the meeting as concluded.
 
-<p align="center"><img src="assets/appointment.svg" alt="Appointment"></p>
+<p align="center"><img src="assets/appointment.svg" alt="Appointment lifecycle"></p>
 
-Two other concepts have a simpler, two-state life: a User is created active and becomes inactive only if an administrator deactivates the account, which stops its logins while keeping its appointments, and an Inquiry is created unresolved and becomes resolved when the student marks the suggested answer as satisfactory, which is only possible if an answer was suggested.
+Two concepts have a two-state life. A User is created active and becomes inactive only if an administrator deactivates the account, which blocks its logins and keeps its appointments. An Inquiry is created unresolved and becomes resolved when the student marks the suggested answer as satisfactory, which requires that an answer was suggested.
 
-## Data-related aspects
+## Data persistence
 
-Pronto persists six families of data, mirroring the bounded contexts: user-related data (including student profiles), office-related data, employee- and shift-related data, appointment-related data, the FAQ collection, and the questions students ask.
-Availability is deliberately not stored: it is derived at query time by expanding the shifts of an office's employees into candidate slots and subtracting those already taken by booked appointments.
+Pronto persists different families of data: users with their student profiles, offices, employees with their shifts, appointments, FAQs, and the questions students ask. The database is the single source of truth, and components share data only through it. The vector store holds a derived copy of the published FAQs, as embeddings.
 
-No data is shared between components other than through the database itself, which is the single source of truth. The vector store is no exception: it holds a derived copy of the published FAQs, in the form of embeddings, which can always be rebuilt from the database.
+

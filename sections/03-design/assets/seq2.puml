@@ -1,9 +1,10 @@
 @startuml seq2
+skinparam shadowing false
 actor "Student A" as A
 actor "Student B" as B
 participant "Routes" as routes
 participant "BookingService" as booksvc
-participant "AppointmentRepository" as apptrepo
+participant "ORM" as orm
 database "Database" as db
 
 A -> routes : POST /appointments (office, slot S)
@@ -11,30 +12,30 @@ B -> routes : POST /appointments (office, slot S)
 routes -> booksvc : book(A, office, S)
 routes -> booksvc : book(B, office, S)
 
-booksvc -> apptrepo : least loaded free employee on duty at S
-apptrepo --> booksvc : E1 (for A)
-booksvc -> apptrepo : least loaded free employee on duty at S
-apptrepo --> booksvc : E1 (for B)
+booksvc -> orm : least loaded free employee on duty at S
+orm --> booksvc : E1 (for A)
+booksvc -> orm : least loaded free employee on duty at S
+orm --> booksvc : E1 (for B)
 note over booksvc : both requests read before either inserts:\nboth pick E1
 
-booksvc -> apptrepo : create(A, employee=E1, slot=S)
-apptrepo -> db : BEGIN; lock E1, still on duty?; INSERT (E1, S)
-db --> apptrepo : ok (unique constraint satisfied)
-apptrepo --> booksvc : appointment
+booksvc -> orm : create(A, employee=E1, slot=S)
+orm -> db : BEGIN; lock E1; still on duty?; INSERT (E1, S)
+db --> orm : ok (unique constraint satisfied)
+orm --> booksvc : appointment
 booksvc --> routes : appointment
 routes --> A : 201 Created (assigned to E1)
 
-booksvc -> apptrepo : create(B, employee=E1, slot=S)
-apptrepo -> db : BEGIN; lock E1, still on duty?; INSERT (E1, S)
-db --> apptrepo : unique constraint violation
-apptrepo --> booksvc : conflict (rolled back)
+booksvc -> orm : create(B, employee=E1, slot=S)
+orm -> db : BEGIN; lock E1; still on duty?; INSERT (E1, S)
+db --> orm : unique constraint violation
+orm --> booksvc : conflict (rolled back)
 
-booksvc -> apptrepo : least loaded free employee on duty at S
-apptrepo --> booksvc : E2
-booksvc -> apptrepo : create(B, employee=E2, slot=S)
-apptrepo -> db : BEGIN; lock E2, still on duty?; INSERT (E2, S)
-db --> apptrepo : ok (unique constraint satisfied)
-apptrepo --> booksvc : appointment
+booksvc -> orm : least loaded free employee on duty at S
+orm --> booksvc : E2
+booksvc -> orm : create(B, employee=E2, slot=S)
+orm -> db : BEGIN; lock E2; still on duty?; INSERT (E2, S)
+db --> orm : ok (unique constraint satisfied)
+orm --> booksvc : appointment
 booksvc --> routes : appointment
 routes --> B : 201 Created (assigned to E2)
 
