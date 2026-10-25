@@ -1,10 +1,11 @@
 # Pronto - Report
 
-This repository contains the engineering report of Pronto, a web application that automates the phone helpdesk of the Campus of Cesena (University of Bologna).
+This repository contains the engineering report of **Pronto**, a web application that automates the phone helpdesk of the Campus of Cesena (University of Bologna).
 
 ## Abstract
 
-"Pronto" is a web application that replaces the telephone helpdesk of the Cesena Campus of the University of Bologna with a self-service platform. A student picks a university office and types a question. The system first suggests the closest answer from a knowledge base of real, anonymised past questions; if that answer does not help, the student books one of the office's free time slots. Employees declare their working shifts, and each booking goes to an employee who is free in that slot, so the work is spread evenly among colleagues and nobody is booked twice for the same slot. Bookings and cancellations are confirmed by e-mail. The project was developed for the Software Engineering course at Unibo. It follows a 3-tier architecture built with Django and Vue.js, and matches FAQs by combining PostgreSQL full-text search with semantic search. Development follows Git Flow and Conventional Commits, and GitHub Actions runs the tests on every push.
+"Pronto" is a web application that replaces the telephone helpdesk of the Cesena Campus of the University of Bologna with a self-service platform. A student picks a university office and asks a question in free text: the system first suggests the closest answer from a knowledge base of real, anonymised past questions, and only if it does not help does the student book one of the office's available time slots. Employees declare their working shifts, and each booking is assigned to a free employee, spreading the work evenly and never giving two students the same employee in the same slot. E-mail notifications confirm bookings and cancellations. 
+This software follows a 3-tier architecture built with Django and Vue.js, and combines PostgreSQL full-text search with Chroma semantic search for FAQ matching. Development follows Git Flow and Conventional Commits, with GitHub Actions running the tests on every push.
 
 ## Project repositories
 
@@ -27,7 +28,7 @@ Digital Transformation Management master's degree, University of Bologna. Superv
 
 The report is a [Jekyll](https://jekyllrb.com/) website: its content lives in `index.md` and in the `sections/` directory as Markdown files.
 
-1. Install Ruby 3.x ([instructions](https://jekyllrb.com/docs/installation/)); on macOS, e.g. `brew install ruby`.
+1. Install **Ruby 3.x** ([instructions](https://jekyllrb.com/docs/installation/)); on macOS, e.g. `brew install ruby`.
 2. From the root of the repository, install the dependencies and start the server:
 
    ```bash
@@ -35,4 +36,4 @@ The report is a [Jekyll](https://jekyllrb.com/) website: its content lives in `i
    bundle exec jekyll serve
    ```
 
-3. Open <http://127.0.0.1:4000> in the browser. Jekyll rebuilds the site whenever a `.md` file changes, so a page refresh shows the edit. Stop the server with `Ctrl+C`.
+3. Open <http://127.0.0.1:4000> in the browser. Changes to the `.md` files are rebuilt automatically (refresh the page to see them); stop the server with `Ctrl+C`.

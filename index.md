@@ -14,17 +14,11 @@ nav_order: 1
 
 ## Abstract
 
-"Pronto" is a web application that replaces the telephone helpdesk of the Cesena Campus of the University of Bologna with a self-service platform. A student picks a university office and types a question. The system first suggests the closest answer from a knowledge base of real, anonymised past questions; if that answer does not help, the student books one of the office's free time slots. Employees declare their working shifts, and each booking goes to an employee who is free in that slot, so the work is spread evenly among colleagues and nobody is booked twice for the same slot. Bookings and cancellations are confirmed by e-mail. The project was developed for the Software Engineering course at Unibo. It follows a 3-tier architecture built with Django and Vue.js, and matches FAQs by combining PostgreSQL full-text search with semantic search. Development follows Git Flow and Conventional Commits, and GitHub Actions runs the tests on every push.
+“Pronto” is a web application that replaces the telephone helpdesk of the Cesena Campus of the University of Bologna with a self-service platform. A student picks a university office and asks a question in free text: the system first suggests the closest answer from a knowledge base of real, anonymised past questions, and only if it does not help does the student book one of the office’s available time slots. Employees declare their working shifts, and each booking is assigned to a free employee, spreading the work evenly and never giving two students the same employee in the same slot. E-mail notifications confirm bookings and cancellations. This project, developed for the Software Engineering course at Unibo, follows a 3-tier architecture built with Django and Vue.js, and combines PostgreSQL full-text search with semantic search for FAQ matching. Development follows Git Flow and Conventional Commits, with GitHub Actions running the tests on every push.
 
 ## Disclaimer
 
-During the preparation of this work, the authors used Claude Code (Anthropic) to:
-
-- draft and revise parts of this report;
-- generate part of the source code and of the automated tests;
-- review the code.
-
-The requirements, the design decisions and the calibration of the FAQ matching thresholds are the authors' own, and every output of the tool was checked by the authors before being included.
+During the preparation of this work, Claude Code (Anthropic) was used to assist the implementation of the software, while all the design decisions were made by the authors.
 
 After using this tool, the authors reviewed and edited the content as needed
 and take full responsibility for the content of the final report and artifact.
