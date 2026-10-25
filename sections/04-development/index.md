@@ -77,9 +77,9 @@ Passwords are hashed with Django's default algorithm (PBKDF2). Registration is o
 - `openpyxl`, to import the FAQs from the helpdesk spreadsheet (`import_faqs`), which also anonymises them before storing them unpublished;
 - `python-dotenv`, to read configuration and secrets from a `.env` file that is not versioned.
 
-The frontend depends only on `vue`, `vue-router` (navigation and role guard) and `pinia` (stores for authentication, offices and bookings). We wrote the HTTP client on `fetch` and a small Italian/English translation module ourselves instead of adding axios and vue-i18n, because two languages and a dozen endpoints did not justify them.
+The frontend depends only on `vue`, `vue-router` (navigation and role guard) and `pinia` (stores for authentication, offices and bookings). 
 
-**Development tools.**
+**Development tools**
 
 | Purpose | Backend | Frontend |
 |---|---|---|
