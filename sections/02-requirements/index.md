@@ -38,8 +38,6 @@ nav_order: 3
 
 <p align="center"><img src="assets/use-case-diagram.svg" alt="Use case diagram"></p>
 
-
-
 ## Requirements analysis
 
 ### Functional requirements

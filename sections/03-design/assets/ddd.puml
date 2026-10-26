@@ -19,6 +19,8 @@ package "Identity Context" as IC {
   rectangle "StudentProfile\n«Entity»" as StudentProfile
   rectangle "Role\n«Value Object»" as Role
   rectangle "Credentials\n«Value Object»" as Credentials
+  rectangle "UserFactory\n«Factory»" as UserFactory
+  UserFactory --> User : creates at\nregistration
   User *-- StudentProfile
   User -- Role
   User -- Credentials

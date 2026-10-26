@@ -31,10 +31,10 @@ This chapter describes how Pronto is designed to meet the requirements. It names
 
 Pronto has a layered architecture. Each of its four logical layers talks only to the adjacent ones:
 
-- the presentation layer is the client application and renders the user interface;
-- the application layer is the backend and holds all the business logic;
-- the data access layer translates between domain objects and storage operations, through an object-relational mapper (ORM) for the database and a vector index for the vector store;
-- the persistence layer stores the data: a relational database holds the application state, and a vector store holds the embeddings of the published FAQs used by semantic matching.
+- the presentation layer, that renders the user interface;
+- the application layer, that holds all the business logic;
+- the data access layer, that translates between domain objects and storage operations;
+- the persistence layer, that stores the data.
 
 We chose this style because every interaction in Pronto is a synchronous request and response.
 
@@ -50,17 +50,17 @@ We considered three alternatives and discarded them:
 
 Pronto is a 3-tier system:
 
-- the presentation tier has two clients: a single-page application running in the browser, used by students and employees, and an administration interface served by the backend, used by the staff who run the helpdesk;
-- the logic tier is the backend: it exposes the API the single-page application calls, holds the booking, FAQ, authentication and notification logic, and runs the ORM and the vector index in its own process;
-- the data tier is the relational database and the vector store.
+- the presentation tier is implemented by two clients: a single-page application running in the browser, used by students and employees, and an administration interface served by the backend, used by the staff who run the helpdesk;
+- the logic tier is implemented by the backend: it exposes the API the single-page application calls, holds the booking, FAQ, authentication and notification logic, and runs the ORM and the vector index in its own process;
+- the data tier is implemented by the relational database and the vector store.
 
-The layers map onto the tiers directly. The presentation layer is the presentation tier, the application and data access layers together make up the logic tier, and the persistence layer is the data tier.
+The layers map onto the tiers directly. The presentation layer maps onto the presentation tier, the application and data access layers maps onto the logic tier, and the persistence layer maps onto the data tier.
 
 ### System components
 
-The single-page application renders the interface and collects input. It turns user actions into API requests and shows the responses: FAQ suggestions, free slots, bookings and the user's own account. It keeps the authentication token and the booking in progress, nothing else. The administration interface lets the helpdesk staff review and publish FAQs, maintain offices, users and employees' offices, and oversee appointments and the questions students asked. It works on the data access layer directly, without going through the API.
+The single-page application renders the interface and collects input. It turns user actions into API requests and shows the responses: FAQ suggestions, free slots, bookings and the user's own account. It keeps the authentication token and the booking in progress. The administration interface lets the helpdesk staff review and publish FAQs, maintain offices, users and employees' offices, and oversee appointments and the questions students asked. It works on the data access layer directly, without going through the API.
 
-The backend is divided into software components: modules of code, each with one responsibility, that handle the domain entities described in [DDD modelling](#ddd-modelling) without being entities themselves. A request enters through the Routes, which pass it to a service; the services apply the business rules and read and write the entities through the data access layer.
+The backend is divided into software components: modules of code, each with one responsibility, that handle the domain entities described in [DDD modelling](#ddd-modelling). A request enters through the Routes, which pass it to a service; the services apply the business rules and read and write the entities through the data access layer.
 
 - Routes expose the API endpoints. They authenticate the caller, check that the caller's role allows the action, validate the request and hand it to a service. Plain reads, such as the list of offices or of the caller's appointments, go straight to the data access layer, scoped to what the caller may see.
 - BookingService computes availability, assigns each booking to an employee, checks shifts as they are declared and withdrawn, and moves appointments through their lifecycle.
@@ -114,6 +114,7 @@ Pronto's domain splits into three bounded contexts:
 - Role is a value object: student, employee or administrator. Students and employees get it from the domain of their e-mail address at registration; administrators are created by the staff.
 - Credentials is a value object holding the password hash and the time of the last login.
 - StudentProfile is an entity inside the User aggregate, holding the student ID and degree programme. 
+- UserFactory creates a User at registration. In the implementation, the factory's role is played by the user manager together with the registration serializer.
 
 #### Booking context concepts
 
@@ -149,6 +150,7 @@ The table lists the main types the DDD model turns into.
 | Role | What a user may do, derived from the e-mail domain at registration | Value Object | STUDENT, EMPLOYEE, ADMIN | none |
 | Credentials | How a user proves who they are | Value Object | passwordHash, lastLogin | none |
 | StudentProfile | The data only a student has | Entity | matricola, degreeProgramme | clean(): refuses a profile for a user who is not a student |
+| UserFactory | Builds a valid User aggregate at registration | Factory | none | register(email, password, firstName, lastName, studentData?): User |
 | Office | A helpdesk office students ask about and book with | Entity| code, name [it, en], contactEmail, slotDurationMinutes, isActive | none |
 | Language | The language of a question, a FAQ text or a student's e-mails | Value Object| IT, EN | none |
 | EmployeeProfile | A user in the employee role, staffing one office | Entity| user, office, shifts | none: changed through BookingService |
@@ -192,6 +194,8 @@ Two concepts have a two-state life. A User is created active and becomes inactiv
 
 ## Data persistence
 
-Pronto persists different families of data: users with their student profiles, offices, employees with their shifts, appointments, FAQs, and the questions students ask. The database is the single source of truth, and components share data only through it. The vector store holds a derived copy of the published FAQs, as embeddings.
+Pronto stores users with their student profiles, offices, employees with their shifts, appointments, FAQs and the questions students ask, because all of them must outlive a request: an appointment booked today is handled next week. This data is structured and full of references, since an appointment points to a student, an employee, an office and a FAQ, and the booking rules rely on unique constraints and transactions. So it lives in a relational database, PostgreSQL, whose full-text search also serves FAQ matching. The embeddings of the published FAQs are vectors that live in a vector store . Only the backend, administration interface included, queries the two stores: it reads shifts, appointments and FAQs, writes appointments and inquiries, and updates the vector store after a FAQ change commits. 
+Reads and writes run concurrently. Two students may book the same employee for the same slot at once, so a lock on the employee and a partial unique index on booked slots let only one booking through. 
+Components share data only through the database, and the vector store copies the FAQs from it.
 
 
