@@ -26,7 +26,7 @@ We enforce the convention with commitlint, which a GitHub Actions workflow runs 
 
 ## Implementation details
 
-**Backend structure.** The backend is a Django project split into four apps, one per bounded context plus the shared kernel: `accounts` (Identity), `offices` (Office), `booking` (Booking) and `faq` (Support). The components of the [Design](../03-design/#system-components) map onto the code as follows. The services are modules of functions rather than classes; only the matchers are classes, sharing the `Matcher` interface.
+**Backend structure.** The backend is a Django project split into four apps: `accounts`, `offices`, `booking` and `faq`. The components of the [Design](../03-design/#system-components) map onto the code as follows. The services are modules of functions rather than classes; only the matchers are classes, sharing the `Matcher` interface.
 
 | Design component | Code | Role |
 |---|---|---|
@@ -55,8 +55,10 @@ The language of stored texts (office names, FAQs) is chosen with the `?lang=it|e
 
 The second step of FAQ matching uses **Chroma**, a vector database queried through its Python client, and runs only when full-text search finds nothing relevant enough. Embeddings are computed inside the backend with the multilingual model `paraphrase-multilingual-MiniLM-L12-v2`. Each step has its own threshold, calibrated on the real FAQ dataset: a rank of 0.45 for full-text search (`FAQ_MATCH_MIN_RANK`) and a cosine similarity of 0.7 for semantic search (`FAQ_SEMANTIC_MIN_SIMILARITY`). If Chroma cannot be reached, the error is logged and matching falls back to full-text search alone; the index can be rebuilt from the database with the `rebuild_faq_index` command.
 
+<<inserisci foto embedding sul piano 3d>>
+
 **Authentication.** Clients authenticate with **DRF token authentication**. We chose DRF instead of an external auth service, such as JWT, because it's built-in. At login the backend issues a token, stored in the database; the frontend keeps it in `localStorage` and sends it in the `Authorization: Token <key>` header of each request; logout deletes it on the server.
-Passwords are hashed with Django's default algorithm (PBKDF2). Registration is open only to university addresses: `@studio.unibo.it` addresses register as students, `@unibo.it` addresses as employees, all others are refused.
+Passwords are hashed with Django's default algorithm (PBKDF2).
 
 **Authorization.** Authorization is **role-based (RBAC)**. Each user has one role: student, employee or administrator. Students and employees get theirs from the e-mail domain at registration; administrators are created by the staff. Two DRF permission classes, `IsStudent` and `IsEmployee`, guard the endpoints, on top of the default `IsAuthenticated`: only students ask questions and book, only employees declare shifts and complete appointments. Roles alone are not enough for appointments, so the querysets are also scoped to the caller: a student only sees their own appointments, an employee only those assigned to them. Administrators work in the Django admin, which is protected by Django's staff flag. The frontend repeats the role checks in the router (`meta.role`) to hide the pages a user cannot use, but the backend remains the only real check.
 
@@ -73,7 +75,7 @@ Passwords are hashed with Django's default algorithm (PBKDF2). Registration is o
 - `djangorestframework`, for the REST API;
 - `django-cors-headers`, so that the frontend, served from another origin, can call the API;
 - `psycopg`, the PostgreSQL driver;
-- `chromadb` and `fastembed`, for semantic matching; fastembed runs the model with ONNX, without installing PyTorch;
+- `chromadb` and `fastembed`, for semantic matching; fastembed runs the model;
 - `openpyxl`, to import the FAQs from the helpdesk spreadsheet (`import_faqs`), which also anonymises them before storing them unpublished;
 - `python-dotenv`, to read configuration and secrets from a `.env` file that is not versioned.
 
@@ -94,6 +96,6 @@ Docker Compose starts the whole system locally (PostgreSQL, Chroma, backend and 
 **External services.**
 
 - **Neon**, a managed PostgreSQL service hosting the shared development database; the CI applies the migrations to it after each merge into `develop`;
-- an **SMTP server**, which delivers the booking and cancellation e-mails; in development the backend prints them to the console instead. E-mails are sent only after the database transaction commits, on a best-effort basis: a failed e-mail is logged and does not undo the booking;
+- an **SMTP server**, which delivers the booking and cancellation e-mails; in development the backend prints them to the console instead;
 - **GitHub** (repositories, Actions, Releases) and **PyPI/TestPyPI**, where the backend is published as the `pronto-helpdesk` package.
 
