@@ -55,7 +55,9 @@ The language of stored texts (office names, FAQs) is chosen with the `?lang=it|e
 
 The second step of FAQ matching uses **Chroma**, a vector database queried through its Python client, and runs only when full-text search finds nothing relevant enough. Embeddings are computed inside the backend with the multilingual model `paraphrase-multilingual-MiniLM-L12-v2`. Each step has its own threshold, calibrated on the real FAQ dataset: a rank of 0.45 for full-text search (`FAQ_MATCH_MIN_RANK`) and a cosine similarity of 0.7 for semantic search (`FAQ_SEMANTIC_MIN_SIMILARITY`). If Chroma cannot be reached, the error is logged and matching falls back to full-text search alone; the index can be rebuilt from the database with the `rebuild_faq_index` command.
 
-<<inserisci foto embedding sul piano 3d>>
+The figure below illustrates embeddings in the CMU Word Embedding Demo. On the right, each word is a vector of 300 numbers, one colour per number. On the left, the words are placed on two axes chosen by hand: words with related meanings lie close together, such as *tuition* and *fee* on one side and *exam* and *lecture* on the other. Pronto applies the same idea to whole sentences, with a multilingual model: Chroma stores one vector per published FAQ and language and returns the FAQ closest to the question by cosine similarity. 
+
+<p align="center"><img src="assets/word-embedding-demo.png" alt="Word2Vec embeddings of university terms in the CMU Word Embedding Demo"></p>
 
 **Authentication.** Clients authenticate with **DRF token authentication**. We chose DRF instead of an external auth service, such as JWT, because it's built-in. At login the backend issues a token, stored in the database; the frontend keeps it in `localStorage` and sends it in the `Authorization: Token <key>` header of each request; logout deletes it on the server.
 Passwords are hashed with Django's default algorithm (PBKDF2).
