@@ -14,7 +14,7 @@ Pronto is a client-server web application with a 3-tier structure. A single-page
 
 ## Use case collection
 
-Pronto has three actors. Students need information from one of the campus offices (guidance, the student administration office, international relations, internships) and want either an immediate answer or an appointment. Employees work in one of these offices: they declare their weekly shifts, from which the system derives the bookable slots, and handle the appointments assigned to them. Administrators run the helpdesk: they oversee all appointments and maintain users, offices and FAQs through the Django admin. Students and employees register by themselves, and their role follows from the domain of their institutional e-mail; an administrator account cannot be obtained through registration.
+Pronto has three actors. Students need information from one of the campus offices (student administration office, international relations, internships) and want either an immediate answer or an appointment. Employees work in one of these offices: they declare their weekly shifts, from which the system derives the bookable slots, and handle the appointments assigned to them. Administrators run the helpdesk: they oversee all appointments and maintain users, offices and FAQs through the Django admin. Students and employees register by themselves, and their role follows from the domain of their institutional e-mail; an administrator account cannot be obtained through registration.
 
 Students use Pronto sporadically and from anywhere, while Employees use it every working day: they declare their shifts once, change them when needed, and follow the appointments as they arrive.
 
