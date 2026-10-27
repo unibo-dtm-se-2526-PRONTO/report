@@ -113,7 +113,7 @@ All other technical choices (Django, PostgreSQL and Chroma for FAQ matching, Vue
 - **AC17** (NFR2): under normal load, FAQ matching, slot search and booking each answer within a few seconds.
 - **AC18** (NFR3): passwords are stored only as hashes; a request without a valid token is rejected, and a token stops working after logout.
 - **AC19** (NFR1-NFR6): if achieved, this will be verified through manual and automated testing.
-- **AC20** (IR1): the published package and source code declare and require Python >= 3.10, and the software runs correctly under that version.
+- **AC20** (IR1): the published package and source code declare compatibility with Python >= 3.10; the automated tests run on Python 3.12, the version of the Docker image the backend runs in.
 
 ## Glossary
 
