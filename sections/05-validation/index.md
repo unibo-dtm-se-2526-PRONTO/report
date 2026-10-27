@@ -6,9 +6,30 @@ nav_order: 6
 
 # Validation
 
-## Testing approach
+## Table of contents
 
-### Backend
+- [Backend](#backend)
+  - [Testing approach](#testing-approach)
+    - [Automated testing tools](#automated-testing-tools)
+    - [Static analysis tools](#static-analysis-tools)
+    - [Test databases](#test-databases)
+    - [Test doubles](#test-doubles)
+  - [Testing (automated)](#testing-automated)
+    - [Unit testing](#unit-testing)
+    - [Integration testing](#integration-testing)
+    - [System testing](#system-testing)
+  - [Acceptance tests (manual)](#acceptance-tests-manual)
+- [Frontend](#frontend)
+  - [Testing approach](#testing-approach-1)
+  - [Testing (automated)](#testing-automated-1)
+    - [Unit testing](#unit-testing-1)
+    - [Integration testing](#integration-testing-1)
+    - [System testing](#system-testing-1)
+  - [Acceptance tests (manual)](#acceptance-tests-manual-1)
+
+## Backend
+
+### Testing approach
 
 We followed test-driven development (TDD) since the first feature: the test layout and a first health-check test were set up before the `accounts` app, and from then on each feature was developed together with its tests, writing a failing test first and then the code that makes it pass. All tests live in the `tests/` folder at the root of the repository, one file per app and topic (`test_accounts_*.py`, `test_booking_*.py`, `test_faq_*.py`, `test_offices_*.py`), with shared fixtures in `conftest.py`.
 
@@ -21,32 +42,6 @@ The tools are development dependencies declared in `pyproject.toml`:
 
 They run with `poe test` and `poe coverage`.
 
-#### Test databases
-
-The tests run on two databases. On a developer's machine they use a SQLite database by default: it needs no server, credentials or network, so the suite works on any machine with Python alone and the unit tests run in about half a minute, which keeps the TDD cycle short. SQLite is not the production engine, though: it has no full-text search and no real row locking. The tests that depend on them, such as full-text FAQ matching and concurrent bookings, are marked `postgres` and skipped on SQLite. 
-The CI runs the suite twice: first on SQLite, to check that it still passes with no database server, then on PostgreSQL 16.
-
-The switch happens in `pronto/settings.py`. The settings recognise a test run (pytest sets the `PYTEST_VERSION` environment variable) and, only in that case, replace the default database: if `TEST_DATABASE_URL` holds a `postgres://` URL they point to that PostgreSQL server, otherwise to SQLite in memory.
-
-#### Test doubles
-
-A test double stands in for a real component during a test. All the doubles in Pronto are written by hand and installed with pytest's `monkeypatch`.
-
-| Test double | Test file | Stands in for | Double type | Purpose |
-|---|---|---|---|---|
-| In-memory SQLite database | all, in local runs | PostgreSQL | Fake | a database with no server; what it cannot reproduce, full-text search and row locking, is tested on PostgreSQL in the CI (see [Test databases](#test-databases)) |
-| `chromadb.EphemeralClient` | `test_faq_semantic.py` | Chroma server | Fake | indexing and similarity search with no server to run |
-| `fake_embed` | `test_faq_semantic.py` | embedding model | Fake | no model to download, and similarities known in advance |
-| `locmem` e-mail backend (`mailoutbox`) | `test_accounts_register.py`, `test_booking_appointments.py`, `test_booking_notifications.py` | SMTP server | Fake used as a spy | e-mails are kept in memory, so the test can check recipients, language and content |
-| `StubMatcher` | `test_faq_semantic.py` | full-text and semantic matchers | Stub, also a spy | a fixed answer, and a count of the calls, to test the order of the cascade |
-| `find_best_match` that finds nothing | `test_faq_semantic.py` | full-text matching | Stub | sends the question on to semantic search |
-| `connection.vendor = "sqlite"` | `test_faq_matching.py` | database engine | Stub | checks that full-text matching refuses to run without PostgreSQL |
-| disabled `UniqueValidator` | `test_accounts_register.py` | serializer uniqueness check | Stub | lets an invalid profile reach the database, to check that the user is not registered either |
-| `smtp_is_down`, `refuse_the_student` | `test_booking_notifications.py` | `send_mail` | Stub (failure) | a failed e-mail neither undoes the booking nor stops the other e-mail |
-| `store_down`, `model_unavailable` | `test_faq_semantic.py` | Chroma server, embedding model | Stub (failure) | the FAQ is saved and matching falls back when the vector store or the model fails |
-| `anonymise_then_fail` | `test_faq_import.py` | anonymiser | Stub (failure) | an import that fails halfway leaves the database as it was |
-| `no_model` | `test_faq_semantic.py` | embedding model | Dummy | fails the test if called, to check that nothing is embedded |
-
 
 #### Static analysis tools
 
@@ -57,11 +52,25 @@ Static analysis checks the code without running it. Its tools are also declared 
 
 `poe static-checks` runs both checks, and `poe format-check` verifies the formatting.
 
-## Testing (automated)
+#### Test databases
 
-### Unit testing
+The tests run on two databases. On a developer's machine they use a SQLite database by default: it needs no server, credentials or network, so the suite works on any machine with Python alone and the unit tests run in about half a minute, which keeps the TDD cycle short. SQLite is not the production engine, though: it has no full-text search and no real row locking. The tests that depend on them, such as full-text FAQ matching and concurrent bookings, are marked `postgres` and skipped on SQLite. 
+The CI runs the suite twice: first on SQLite, to check that it still passes with no database server, then on PostgreSQL 16.
 
-#### Backend
+The switch happens in `pronto/settings.py`. The settings recognise a test run (pytest sets the `PYTEST_VERSION` environment variable) and, only in that case, replace the default database: if `TEST_DATABASE_URL` holds a `postgres://` URL they point to that PostgreSQL server, otherwise to SQLite in memory.
+
+#### Test doubles
+
+Together with the tests, test doubles were also implemented. They are all written by hand and installed with pytest's `monkeypatch`.
+
+**Fakes**: simplified but working versions of the external services. Chroma runs as an in-memory client (`chromadb.EphemeralClient`) instead of a server, and the embedding model is replaced by `fake_embed`, a small deterministic function, so that no model is downloaded and the similarities are known in advance. E-mails are collected in memory by Django's `locmem` backend, which also acts as a spy: the test reads the recipients, language and content of each message. In local runs, the in-memory SQLite database is itself a fake of PostgreSQL (see [Test databases](#test-databases)).
+
+**Stubs**: functions that return a fixed answer or raise an error, to drive the code down a chosen path. `StubMatcher` always returns the same match, to test the order of the full-text and semantic cascade. `smtp_is_down`, `store_down`, `model_unavailable` and `anonymise_then_fail` simulate a mail server, a vector store, a model or an import that fail, to check that the application handles the failure without losing data.
+
+
+### Testing (automated)
+
+#### Unit testing
 
 Unit tests call models, services and commands directly, without going through the HTTP API.
 
@@ -84,9 +93,7 @@ The table reports the run on PostgreSQL, as in the CI. Coverage is measured by r
 | `pronto/settings.py` | 3 | installed apps | – | 3/3 | 92% |
 | **Total** | **292** | | | **292/292** | **86%** |
 
-### Integration testing
-
-#### Backend
+#### Integration testing
 
 Integration tests go through the HTTP API with the test client of Django REST Framework: each request crosses the routes (URL, authentication, permission check, serializer), the service, the ORM and the database, and the test checks both the response and the state left in the database.
 
@@ -104,9 +111,7 @@ Integration tests go through the HTTP API with the test client of Django REST Fr
 
 Run together, unit and integration tests (468) all pass on PostgreSQL and cover 98% of the backend code.
 
-### System testing
-
-#### Backend
+#### System testing
 
 We did not write automated end-to-end tests. The behaviour of the running application and the user experience are verified manually, as described in the next section.
 
@@ -120,23 +125,37 @@ Only then does the workflow call `.github/workflows/deploy.yml`, which publishes
 
 Containers are what keep the test environment clean. In the CI, the PostgreSQL server is a service container created for each run and discarded at the end, so nothing is carried over from one run to the next. Locally, the same tests run against the `db` service of Docker Compose (`docker compose up -d --wait db`), on a `test_pronto` database that Django creates and drops at each run, apart from the development data.
 
-## Acceptance tests (manual)
+### Acceptance tests (manual)
 
 The acceptance criteria that describe what a user sees are checked by hand on the whole system.
 
-| ID | Criterion | Steps | Expected result |
-|---|---|---|---|
-| MT1 | AC1 | A student registers at `/register` with a `@studio.unibo.it` address, then logs in. | The account is created and the student lands on `/ask`. |
-| MT2 | AC6, AC7 | A student asks a question in the textbox. | The answer is shown with its office. |
-| MT3 | AC8, AC13 | A student says the answer did not help, picks a free slot and confirms. | The appointment is booked and a confirmation e-mail is sent to the student (this can be checked in the log of `docker compose logs -f backend`). |
-| MT4 | AC3 | A student opens `/bookings`. | Only the student's own appointments are listed. |
-| MT5 | AC11 | A student cancels a future appointment from `/bookings`. | The appointment is shown as cancelled and the slot is free again. |
-| MT6 | AC2 | An employee registers at `/register` with a `@unibo.it` address, logs in and chooses an office at `/profile`. | The account is created and the employee lands on `/queue`. |
-| MT7 | AC4 | An employee declares a shift at `/availability`, e.g. Monday 9:00–12:00. | The shift is saved and students see 30-minute slots covering it. |
-| MT8 | AC5 | An employee withdraws the shift. | The shift disappears and its slots are no longer offered to students. |
-| MT9 | AC3, AC14 | An employee opens `/queue` after a student has booked with them. | The appointment is listed with the student's question, and a notification e-mail was sent to the employee. |
-| MT10 | AC12 | An employee marks an appointment that has started as completed in `/queue`. | The appointment is shown as completed. |
-| MT11 | AC9, AC16 | Two students, logged in in two browser windows, reach the confirmation of the same slot, which only one employee covers, and confirm at the same moment. | One booking succeeds; the other is rejected because the slot is no longer available. The employee has a single appointment in that slot. |
-| MT12 | AC6, AC7 | A student asks two questions about the same FAQ: one with the FAQ's own words, one reworded with different words. An administrator then opens the questions in the Django admin (`/admin/faq/inquiry/`). | Both questions are matched to that FAQ; the column "found with" shows "full-text search" for the first and "semantic similarity" for the second. |
+| Requirement | Steps | Expected result |
+|---|---|---|
+| AC1 | A student registers at `/register` with a `@studio.unibo.it` address, then logs in. | The account is created and the student lands on `/ask`. |
+| AC6, AC7 | A student asks a question in the textbox. | The answer is shown with its office. |
+| AC8, AC13 | A student says the answer did not help, picks a free slot and confirms. | The appointment is booked and a confirmation e-mail is sent to the student (this can be checked in the log of `docker compose logs -f backend`). |
+| AC3 | A student opens `/bookings`. | Only the student's own appointments are listed. |
+| AC11 | A student cancels a future appointment from `/bookings`. | The appointment is shown as cancelled and the slot is free again. |
+| AC2 | An employee registers at `/register` with a `@unibo.it` address, logs in and chooses an office at `/profile`. | The account is created and the employee lands on `/queue`. |
+| AC4 | An employee declares a shift at `/availability`, e.g. Monday 9:00–12:00. | The shift is saved and students see 30-minute slots covering it. |
+| AC5 | An employee withdraws the shift. | The shift disappears and its slots are no longer offered to students. |
+| AC3, AC14 | An employee opens `/queue` after a student has booked with them. | The appointment is listed with the student's question, and a notification e-mail was sent to the employee. |
+| AC12 | An employee marks an appointment that has started as completed in `/queue`. | The appointment is shown as completed. |
+| AC9, AC16 | Two students, logged in in two browser windows, reach the confirmation of the same slot, which only one employee covers, and confirm at the same moment. | One booking succeeds; the other is rejected because the slot is no longer available. The employee has a single appointment in that slot. |
+| AC6, AC7 | A student asks two questions about the same FAQ: one with the FAQ's own words, one reworded with different words. An administrator then opens the questions in the Django admin (`/admin/faq/inquiry/`). | Both questions are matched to that FAQ; the column "found with" shows "full-text search" for the first and "semantic similarity" for the second. |
 
 Success rate: 12/12.
+
+## Frontend
+
+### Testing approach
+
+### Testing (automated)
+
+#### Unit testing
+
+#### Integration testing
+
+#### System testing
+
+### Acceptance tests (manual)
