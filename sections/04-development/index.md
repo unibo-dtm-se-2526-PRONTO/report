@@ -12,40 +12,40 @@ Pronto lives in three Git repositories hosted under the `unibo-dtm-se-2526-PRONT
 
 **Branches.** We adopted a Git Flow model:
 
-- `master` holds released code only, and every merge into it produces a release;
+- the stable branch holds released code only, and every merge into it produces a release. It is called `master` in the backend repository and `main` in the frontend and report repositories;
 - `develop` is the integration branch, where finished work is collected and kept working;
-- work branches start from `develop` and are named after the kind of change: `feature/` for new functionality, `fix/` for bugs, `refactor/`, `test/` and `chore/` for the other kinds of work;
-- `hotfix/` branches carry small, urgent corrections.
+- work branches start from `develop` and are named after the kind of change: `feature/` for new functionality, `fix/` for bugs, and `refactor/`, `test/`, `docs/`, `chore/` and `ci/` for the other kinds of work;
+- `hotfix/` branches carry small corrections that cannot wait for the next feature branch (a lint error, a broken configuration file).
 
-Each branch covers a single topic, so the branch list mirrors the features of the system.
+Each branch covers a single topic, so the branch list mirrors the features of the system: in the backend, for instance, `feature/booking`, `feature/shifts`, `feature/faq-matching`, `feature/chroma` and `test/booking-concurrency`. The branches that Dependabot and Renovate open for dependency updates follow their own naming (`dependabot/...`, `renovate/...`) and target `develop` like any other.
 
-**Commit messages.** Every commit follows [Conventional Commits]: `type(scope): description`, where the type is one of `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `ci`, `build` and `style`, and the scope names the Django app or the frontend module involved (e.g. `fix(booking): lock the appointment when cancelling it`).
-We enforce the convention with commitlint, which a GitHub Actions workflow runs on every pull request. semantic-release reads the commit types to choose the next version number and to write the changelog.
+**Commit messages.** Every commit follows [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): description`, where the type is one of `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `ci`, `build` and `style`, and the scope names the Django app or the frontend module involved (e.g. `feat(faq): match questions with postgres full-text search`).
+semantic-release reads the commit types to choose the next version number and to write the changelog, so a message that does not follow the convention is a release that silently does not happen. In the backend we enforce the convention with commitlint (`@commitlint/config-conventional`), which a GitHub Actions workflow runs on every pull request; in the frontend and in the report it is a team rule, checked during review.
 
-**Pull requests and code reviews.** No one pushes directly to `develop` or to `master`: every change reaches them through a pull request. A pull request is merged only when the CI checks pass (static checks, formatting, test suite, commit messages) and the other team member has reviewed it. Releases follow the same path: a pull request from `develop` to `master`, which commitlint skips because it only carries commits already checked.
+**Pull requests and code reviews.** Changes reach `develop` and the stable branch through pull requests. On the backend, `develop` is a protected branch: GitHub refuses to merge a pull request until the three required checks have passed (static checks and tests on SQLite, tests on PostgreSQL, commit messages; see [CI/CD](../08-cicd/index.md)). GitHub does not require an approving review; reviewing each other's pull requests before merging them is a team rule, and dependency updates are the exception (see below). Releases follow the same path: a pull request from `develop` to the stable branch, which commitlint skips because it only carries commits already checked.
 
 ## Implementation details
 
-**Network protocols.** Clients talk to the backend over **HTTP** (HTTPS in production), following the REST framework. Every interaction in Pronto is a synchronous request/response exchange. HTTP also works from any browser without plugins, and Django and Django REST Framework (DRF) support it natively. The backend reaches PostgreSQL through its own wire protocol over TCP, Chroma through its HTTP API, and the mail server through **SMTP** (Simple Mail Transfer Protocol). SMTP is used only when the `EMAIL_BACKEND` environment variable selects Django's SMTP backend (with TLS on port 587 by default). 
+**Network protocols.** Clients talk to the backend over **HTTP** (HTTPS in production), following the REST style. Every interaction in Pronto is a synchronous request/response exchange, so HTTP fits it directly; it also works from any browser without plugins, and Django and Django REST Framework (DRF) support it natively. The backend reaches PostgreSQL through its own wire protocol over TCP, Chroma through its HTTP API, and the mail server through **SMTP** (Simple Mail Transfer Protocol). SMTP is used only when the `EMAIL_BACKEND` environment variable selects Django's SMTP backend (with TLS on port 587 by default).
 
 The deployment diagram below shows the nodes of the running system and the protocol used on each connection.
 
 <p align="center"><img src="assets/deployment-protocols.svg" alt="Deployment diagram with network protocols"></p>
 
-**Data representation.** Data in transit is encoded as **JSON**. It is the native format of both ends: DRF uses JSON by default, and the frontend reads it with `fetch` with no extra library. 
-The language of stored texts (office names, FAQs) is chosen with the `?lang=it|en` query parameter. 
+**Data representation.** Data in transit is encoded as **JSON**. It is the native format of both ends: DRF uses JSON by default, and the frontend reads it with `fetch` with no extra library.
+The language of stored texts (office names, FAQs) is chosen with the `?lang=it|en` query parameter; Italian is the default, and any other value is refused with a `400` response.
 
 **Database queries.** The application data is relational and strongly linked (appointments reference students, employees, offices and FAQs), so we store it in **PostgreSQL** and query it through the **Django ORM**. The ORM keeps queries in Python and generates the schema migrations. Two features of PostgreSQL are used directly through the ORM:
 
-- **full-text search** (`SearchVector`, `SearchQuery`, `SearchRank`) with the `italian` and `english` text-search configurations, which is the first step of FAQ matching;
-- **constraints and row locks**: a partial unique constraint on (employee, start) among booked appointments makes concurrent bookings safe, and `select_for_update` locks the rows involved when an appointment is booked or cancelled.
+- **full-text search** (`SearchVector`, `SearchQuery`, `SearchRank`) with the `italian` and `english` text-search configurations, which is the first step of FAQ matching. The FAQ's question is indexed with weight A and its answer with weight B, so a word found in the question counts more;
+- **constraints and row locks**: a partial unique constraint on (employee, start) among booked appointments makes concurrent bookings safe, and `select_for_update` locks the rows involved: the chosen employee when an appointment is booked or a shift is declared or withdrawn, the appointment when it is cancelled.
 
 The second step of FAQ matching uses **Chroma**, a vector database queried through its Python client. Embeddings are computed inside the backend with the multilingual model `paraphrase-multilingual-MiniLM-L12-v2`.
 
-**Authentication.** Clients authenticate with **DRF token authentication**. We chose DRF instead of an external auth service, such as JWT, because it's built-in. At login the backend issues a token, stored in the database; the frontend keeps it in `localStorage` and sends it in the `Authorization: Token <key>` header of each request; logout deletes it on the server.
-Passwords are hashed with Django's default algorithm (PBKDF2). Registration is open only to university addresses: `@studio.unibo.it` addresses register as students, `@unibo.it` addresses as employees, all others are refused.
+**Authentication.** Clients authenticate with **DRF token authentication**. We chose it over JSON Web Tokens because it is built into DRF and because a stored token can be revoked at once: logout deletes it on the server, while a JWT stays valid until it expires unless a blacklist is added. At login the backend issues a random token, stored in the database; the frontend keeps it in `localStorage` and sends it in the `Authorization: Token <key>` header of each request.
+Passwords are hashed with Django's default algorithm (PBKDF2) and checked against Django's password validators at registration. Registration is open only to university addresses: `@studio.unibo.it` addresses register as students, `@unibo.it` addresses as employees, all others are refused.
 
-**Authorization.** Authorization is **role-based (RBAC)**. Each user has one role: student, employee or administrator. Students and employees get theirs from the e-mail domain at registration; administrators are created by the staff. Two DRF permission classes, `IsStudent` and `IsEmployee`, guard the endpoints, on top of the default `IsAuthenticated`: only students ask questions and book, only employees declare shifts and complete appointments. Roles alone are not enough for appointments, so the querysets are also scoped to the caller: a student only sees their own appointments, an employee only those assigned to them. Administrators work in the Django admin, which is protected by Django's staff flag. The frontend repeats the role checks in the router (`meta.role`) to hide the pages a user cannot use, but the backend remains the only real check.
+**Authorization.** Authorization is **role-based (RBAC)**. Each user has one role: student, employee or administrator. Students and employees get theirs from the e-mail domain at registration, and a role sent by the client is ignored; administrators are created by the staff. Two DRF permission classes, `IsStudent` and `IsEmployee`, guard the endpoints, on top of the default `IsAuthenticated`: only students ask questions and book, only employees declare shifts and complete appointments. Roles alone are not enough for appointments, so the querysets are also scoped to the caller: a student only sees their own appointments, an employee only those assigned to them, and someone else's appointment is answered with `404`, as if it did not exist. Administrators work in the Django admin, which is protected by Django's staff flag; the frontend sends an administrator who signs in straight to it. The frontend repeats the role checks in the router (`meta.role`) to hide the pages a user cannot use, but the backend remains the only real check.
 
 ## Technological details
 
@@ -75,12 +75,13 @@ The frontend depends only on `vue`, `vue-router` (navigation and role guard) and
 | Linting and formatting | Ruff | ESLint, oxlint, Prettier |
 | Type checking | mypy | vue-tsc |
 | Task runner | Poe the Poet | npm scripts |
+| Dependency updates | Dependabot | Renovate |
+| Commit message check | commitlint | (team rule) |
 
-Docker Compose starts the whole system locally (PostgreSQL, Chroma, backend and frontend), with the same database engine used in production. GitHub Actions runs the CI, semantic-release publishes the releases, and Renovate keeps dependencies up to date with automatic pull requests.
+Docker Compose starts the whole system locally (PostgreSQL, Chroma, backend and frontend), with the same database engine used in production. GitHub Actions runs the CI and semantic-release publishes the releases. Dependabot (backend) and Renovate (frontend) keep the dependencies up to date by opening pull requests against `develop`; in the backend, patch and minor updates are merged automatically once the required checks pass, while major ones wait for one of us.
 
 **External services.**
 
 - **Neon**, a managed PostgreSQL service hosting the shared development database; the CI applies the migrations to it after each merge into `develop`;
 - an **SMTP server**, which delivers the booking and cancellation e-mails; in development the backend prints them to the console instead;
 - **GitHub** (repositories, Actions, Releases) and **PyPI/TestPyPI**, where the backend is published as the `pronto-helpdesk` package.
-
