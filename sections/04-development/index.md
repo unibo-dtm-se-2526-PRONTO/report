@@ -20,7 +20,7 @@ Pronto lives in three Git repositories hosted under the `unibo-dtm-se-2526-PRONT
 Each branch covers a single topic, so the branch list mirrors the features of the system: in the backend, for instance, `feature/booking`, `feature/shifts`, `feature/faq-matching`, `feature/chroma` and `test/booking-concurrency`. The branches that Dependabot and Renovate open for dependency updates follow their own naming (`dependabot/...`, `renovate/...`) and target `develop` like any other.
 
 **Commit messages.** Every commit follows [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): description`, where the type is one of `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `ci`, `build` and `style`, and the scope names the Django app or the frontend module involved (e.g. `feat(faq): match questions with postgres full-text search`).
-semantic-release reads the commit types to choose the next version number and to write the changelog, so a message that does not follow the convention is a release that silently does not happen. In the backend we enforce the convention with commitlint (`@commitlint/config-conventional`), which a GitHub Actions workflow runs on every pull request; in the frontend and in the report it is a team rule, checked during review.
+semantic-release reads the commit types to choose the next version number and to write the changelog, so a message that does not follow the convention is a release that silently does not happen. In both code repositories we enforce the convention with commitlint (`@commitlint/config-conventional`), which a GitHub Actions workflow runs on every pull request; in the report it is a team rule, checked during review.
 
 **Pull requests and code reviews.** Changes reach `develop` and the stable branch through pull requests. On the backend, `develop` is a protected branch: GitHub refuses to merge a pull request until the three required checks have passed (static checks and tests on SQLite, tests on PostgreSQL, commit messages; see [CI/CD](../08-cicd/index.md)). GitHub does not require an approving review; reviewing each other's pull requests before merging them is a team rule, and dependency updates are the exception (see below). Releases follow the same path: a pull request from `develop` to the stable branch, which commitlint skips because it only carries commits already checked.
 
@@ -93,9 +93,9 @@ The frontend depends only on `vue`, `vue-router` (navigation and role guard) and
 | Type checking | mypy | vue-tsc |
 | Task runner | Poe the Poet | npm scripts |
 | Dependency updates | Dependabot | Renovate |
-| Commit message check | commitlint | (team rule) |
+| Commit message check | commitlint | commitlint |
 
-Docker Compose starts the whole system locally (PostgreSQL, Chroma, backend and frontend), with the same database engine used in production; the backend starts, applying the migrations, only once PostgreSQL and Chroma pass their health checks. Tests run on an in-memory SQLite database by default and on PostgreSQL when `TEST_DATABASE_URL` is set, as the CI does, so that full-text search and concurrent bookings are tested on the production engine. GitHub Actions runs the CI, semantic-release publishes the releases, and Renovate keeps dependencies up to date with automatic pull requests.
+Docker Compose starts the whole system locally (PostgreSQL, Chroma, backend and frontend), with the same database engine used in production; the backend starts, applying the migrations, only once PostgreSQL and Chroma pass their health checks. Tests run on an in-memory SQLite database by default and on PostgreSQL when `TEST_DATABASE_URL` is set, as the CI does, so that full-text search and concurrent bookings are tested on the production engine. GitHub Actions runs the CI, semantic-release publishes the releases, and Dependabot in the backend and Renovate in the frontend keep dependencies up to date with automatic pull requests.
 
 **External services.**
 

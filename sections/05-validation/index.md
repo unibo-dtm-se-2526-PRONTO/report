@@ -20,12 +20,6 @@ nav_order: 6
     - [System testing](#system-testing)
   - [Acceptance tests (manual)](#acceptance-tests-manual)
 - [Frontend](#frontend)
-  - [Testing approach](#testing-approach-1)
-  - [Testing (automated)](#testing-automated-1)
-    - [Unit testing](#unit-testing-1)
-    - [Integration testing](#integration-testing-1)
-    - [System testing](#system-testing-1)
-  - [Acceptance tests (manual)](#acceptance-tests-manual-1)
 
 ## Backend
 
@@ -148,14 +142,8 @@ Success rate: 12/12.
 
 ## Frontend
 
-### Testing approach
+The frontend is tested with Vitest, which runs the tests in a simulated browser (jsdom). The 20 test files in `src/__tests__/` work at three levels. Unit tests check the API client, the endpoint functions, the Pinia stores, the router guard and the formatting and translation helpers in isolation. Component tests mount each page, from login and registration to booking and the employee queue, and check what it shows and which requests it sends. Flow tests mount the whole app with the real router and stores and follow complete journeys: a student who signs in, asks a question, finds no answer and books a slot, and an employee who signs in to the queue and signs out. In every test the backend is replaced by a mock of `fetch`, and the API address points to a host that does not exist, so no test can reach the shared database.
 
-### Testing (automated)
+Static analysis checks the code without running it. vue-tsc checks the types of the TypeScript code and of the Vue templates, and two linters look for errors and bad patterns: oxlint for definite errors, and ESLint with the rules for Vue, TypeScript and Vitest. `npm run lint` runs both linters and `npm run type-check` the type check, and CI runs them before the tests. Prettier keeps the formatting consistent through `npm run format`, which rewrites the files; unlike in the backend, CI does not check the formatting.
 
-#### Unit testing
-
-#### Integration testing
-
-#### System testing
-
-### Acceptance tests (manual)
+The suite has 221 tests, all passing. Coverage is 100% of lines and 97% of branches, against CI thresholds of 95% and 90%. CI runs the suite on Linux, Windows and macOS with Node 20, 22 and 24. The manual acceptance tests above were carried out through the frontend, so they validate it too.
