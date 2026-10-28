@@ -6,40 +6,52 @@ actor Employee
 actor Administrator as Admin
 
 rectangle Pronto {
-    usecase "Register / Login" as UC1
+    usecase "Register" as UC0
+    usecase "Login" as UC1
     usecase "Declare office & shifts" as UC2
-    usecase "Update availability" as UC3
-    usecase "Ask a question" as UC4
-    usecase "Receive FAQ answer" as UC5
-    usecase "Resolve without booking" as UC5a
+    usecase "Update shifts" as UC3
+    usecase "Ask a question\n(no office chosen)" as UC4
+    usecase "Receive FAQ answer\n(with its office)" as UC5
+    usecase "Mark answer as resolving" as UC5a
     usecase "Browse available slots" as UC6
     usecase "Book appointment" as UC7
+    usecase "View own appointments" as UC12
     usecase "Cancel appointment" as UC8
     usecase "Mark appointment as completed" as UC9
-    usecase "Receive notifications" as UC10
-    usecase "Manage offices & FAQs" as UC11
+    usecase "Receive e-mail notifications" as UC10
+    usecase "Oversee all appointments" as UC13
+    usecase "Manage users, offices & FAQs" as UC11
+    usecase "Review anonymised FAQs\nbefore publication" as UC14
 }
 
+Student --> UC0
 Student --> UC1
 Student --> UC4
 Student --> UC5a
 Student --> UC6
 Student --> UC7
+Student --> UC12
 Student --> UC8
 Student --> UC10
 
+Employee --> UC0
 Employee --> UC1
 Employee --> UC2
 Employee --> UC3
+Employee --> UC12
 Employee --> UC8
 Employee --> UC9
 Employee --> UC10
 
+Admin --> UC1
+Admin --> UC13
 Admin --> UC8
 Admin --> UC11
+Admin --> UC14
 
 UC4 ..> UC5 : <<include>>
-UC5 ..> UC5a : <<extend>>
-UC7 ..> UC6 : <<include>>
+UC5a ..> UC5 : <<extend>>
 UC7 ..> UC4 : <<extend>>
+UC7 ..> UC6 : <<include>>
+UC14 ..> UC11 : <<extend>>
 @enduml

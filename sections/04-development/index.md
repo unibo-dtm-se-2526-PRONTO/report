@@ -26,7 +26,20 @@ semantic-release reads the commit types to choose the next version number and to
 
 ## Implementation details
 
-**Network protocols.** Clients talk to the backend over **HTTP** (HTTPS in production), following the REST style. Every interaction in Pronto is a synchronous request/response exchange, so HTTP fits it directly; it also works from any browser without plugins, and Django and Django REST Framework (DRF) support it natively. The backend reaches PostgreSQL through its own wire protocol over TCP, Chroma through its HTTP API, and the mail server through **SMTP** (Simple Mail Transfer Protocol). SMTP is used only when the `EMAIL_BACKEND` environment variable selects Django's SMTP backend (with TLS on port 587 by default).
+**Backend structure.** The backend is a Django project split into four apps: `accounts`, `offices`, `booking` and `faq`. The components of the [Design](../03-design/#system-components) map onto the code as follows. The services are modules of functions rather than classes; only the matchers are classes, sharing the `Matcher` interface.
+
+| Design component | Code | Role |
+|---|---|---|
+| Routes | `*/urls.py`, `*/views.py`, `*/serializers.py`, `pronto/permissions.py` | DRF views and serializers: authentication, role checks, validation, call to a service |
+| BookingService | `booking/services.py` | availability, booking with employee assignment, cancellation, completion, shifts |
+| InquiryService | `faq/services.py` | records a question with its match, resolves it |
+| FaqMatchingService | `faq/matching.py` | `find_best_match` and the `FullTextMatcher`, `SemanticMatcher` and `CascadeMatcher` classes |
+| NotificationService | `booking/notifications.py` | renders the e-mails and sends them after the commit |
+| ORM and repositories | `*/models.py` | Django models; each model's manager is the repository of its aggregate |
+| Vector index | `faq/vector_index.py`, `faq/signals.py` | embeddings in Chroma, kept in step with the FAQs by signals after each commit |
+| Admin interface | `*/admin.py` | Django admin pages for the helpdesk staff |
+
+**Network protocols.** Clients talk to the backend over **HTTP** (HTTPS in production), following the REST framework. Every interaction in Pronto is a synchronous request/response exchange. HTTP also works from any browser without plugins, and Django and Django REST Framework (DRF) support it natively. The backend reaches PostgreSQL through its own wire protocol over TCP, Chroma through its HTTP API, and the mail server through **SMTP** (Simple Mail Transfer Protocol). SMTP is used only when the `EMAIL_BACKEND` environment variable selects Django's SMTP backend (with TLS on port 587 by default). 
 
 The deployment diagram below shows the nodes of the running system and the protocol used on each connection.
 
@@ -37,13 +50,17 @@ The language of stored texts (office names, FAQs) is chosen with the `?lang=it|e
 
 **Database queries.** The application data is relational and strongly linked (appointments reference students, employees, offices and FAQs), so we store it in **PostgreSQL** and query it through the **Django ORM**. The ORM keeps queries in Python and generates the schema migrations. Two features of PostgreSQL are used directly through the ORM:
 
-- **full-text search** (`SearchVector`, `SearchQuery`, `SearchRank`) with the `italian` and `english` text-search configurations, which is the first step of FAQ matching. The FAQ's question is indexed with weight A and its answer with weight B, so a word found in the question counts more;
-- **constraints and row locks**: a partial unique constraint on (employee, start) among booked appointments makes concurrent bookings safe, and `select_for_update` locks the rows involved: the chosen employee when an appointment is booked or a shift is declared or withdrawn, the appointment when it is cancelled.
+- **full-text search** (`SearchVector`, `SearchQuery`, `SearchRank`) with the `italian` and `english` text-search configurations, which is the first step of FAQ matching;
+- **constraints and row locks**: a partial unique constraint on (employee, start) among booked appointments makes concurrent bookings safe, and `select_for_update` locks the rows involved: the employee when an appointment is booked or a shift is declared or withdrawn, so a shift cannot change under a booking and two shifts declared together cannot overlap; the appointment when it is cancelled, so a double click cannot cancel it twice or send the e-mails twice.
 
-The second step of FAQ matching uses **Chroma**, a vector database queried through its Python client. Embeddings are computed inside the backend with the multilingual model `paraphrase-multilingual-MiniLM-L12-v2`.
+The second step of FAQ matching uses **Chroma**, a vector database queried through its Python client, and runs only when full-text search finds nothing relevant enough. Embeddings are computed inside the backend with the multilingual model `paraphrase-multilingual-MiniLM-L12-v2`. Each step has its own threshold, calibrated on the real FAQ dataset: a rank of 0.45 for full-text search (`FAQ_MATCH_MIN_RANK`) and a cosine similarity of 0.7 for semantic search (`FAQ_SEMANTIC_MIN_SIMILARITY`). If Chroma cannot be reached, the error is logged and matching falls back to full-text search alone; the index can be rebuilt from the database with the `rebuild_faq_index` command.
 
-**Authentication.** Clients authenticate with **DRF token authentication**. We chose it over JSON Web Tokens because it is built into DRF and because a stored token can be revoked at once: logout deletes it on the server, while a JWT stays valid until it expires unless a blacklist is added. At login the backend issues a random token, stored in the database; the frontend keeps it in `localStorage` and sends it in the `Authorization: Token <key>` header of each request.
-Passwords are hashed with Django's default algorithm (PBKDF2) and checked against Django's password validators at registration. Registration is open only to university addresses: `@studio.unibo.it` addresses register as students, `@unibo.it` addresses as employees, all others are refused.
+The figure below illustrates embeddings in the CMU Word Embedding Demo. On the right, each word is a vector of 300 numbers, one colour per number. On the left, the words are placed on two axes chosen by hand: words with related meanings lie close together, such as *tuition* and *fee* on one side and *exam* and *lecture* on the other. Pronto applies the same idea to whole sentences, with a multilingual model: Chroma stores one vector per published FAQ and language and returns the FAQ closest to the question by cosine similarity. 
+
+<p align="center"><img src="assets/word-embedding-demo.png" alt="Word2Vec embeddings of university terms in the CMU Word Embedding Demo"></p>
+
+**Authentication.** Clients authenticate with **DRF token authentication**. We chose DRF instead of an external auth service, such as JWT, because it's built-in. At login the backend issues a token, stored in the database; the frontend keeps it in `localStorage` and sends it in the `Authorization: Token <key>` header of each request; logout deletes it on the server.
+Passwords are hashed with Django's default algorithm (PBKDF2).
 
 **Authorization.** Authorization is **role-based (RBAC)**. Each user has one role: student, employee or administrator. Students and employees get theirs from the e-mail domain at registration, and a role sent by the client is ignored; administrators are created by the staff. Two DRF permission classes, `IsStudent` and `IsEmployee`, guard the endpoints, on top of the default `IsAuthenticated`: only students ask questions and book, only employees declare shifts and complete appointments. Roles alone are not enough for appointments, so the querysets are also scoped to the caller: a student only sees their own appointments, an employee only those assigned to them, and someone else's appointment is answered with `404`, as if it did not exist. Administrators work in the Django admin, which is protected by Django's staff flag; the frontend sends an administrator who signs in straight to it. The frontend repeats the role checks in the router (`meta.role`) to hide the pages a user cannot use, but the backend remains the only real check.
 
@@ -60,13 +77,13 @@ Passwords are hashed with Django's default algorithm (PBKDF2) and checked agains
 - `djangorestframework`, for the REST API;
 - `django-cors-headers`, so that the frontend, served from another origin, can call the API;
 - `psycopg`, the PostgreSQL driver;
-- `chromadb` and `fastembed`, for semantic matching; fastembed runs the model with ONNX, without installing PyTorch;
+- `chromadb` and `fastembed`, for semantic matching; fastembed runs the model;
 - `openpyxl`, to import the FAQs from the helpdesk spreadsheet (`import_faqs`), which also anonymises them before storing them unpublished;
 - `python-dotenv`, to read configuration and secrets from a `.env` file that is not versioned.
 
-The frontend depends only on `vue`, `vue-router` (navigation and role guard) and `pinia` (stores for authentication, offices and bookings). We wrote the HTTP client on `fetch` and a small Italian/English translation module ourselves instead of adding axios and vue-i18n, because two languages and a dozen endpoints did not justify them.
+The frontend depends only on `vue`, `vue-router` (navigation and role guard) and `pinia` (stores for authentication, offices and bookings). 
 
-**Development tools.**
+**Development tools**
 
 | Purpose | Backend | Frontend |
 |---|---|---|
@@ -78,7 +95,7 @@ The frontend depends only on `vue`, `vue-router` (navigation and role guard) and
 | Dependency updates | Dependabot | Renovate |
 | Commit message check | commitlint | (team rule) |
 
-Docker Compose starts the whole system locally (PostgreSQL, Chroma, backend and frontend), with the same database engine used in production. GitHub Actions runs the CI and semantic-release publishes the releases. Dependabot (backend) and Renovate (frontend) keep the dependencies up to date by opening pull requests against `develop`; in the backend, patch and minor updates are merged automatically once the required checks pass, while major ones wait for one of us.
+Docker Compose starts the whole system locally (PostgreSQL, Chroma, backend and frontend), with the same database engine used in production; the backend starts, applying the migrations, only once PostgreSQL and Chroma pass their health checks. Tests run on an in-memory SQLite database by default and on PostgreSQL when `TEST_DATABASE_URL` is set, as the CI does, so that full-text search and concurrent bookings are tested on the production engine. GitHub Actions runs the CI, semantic-release publishes the releases, and Renovate keeps dependencies up to date with automatic pull requests.
 
 **External services.**
 

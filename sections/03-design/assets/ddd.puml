@@ -1,57 +1,68 @@
 @startuml domain-model
-skinparam packageStyle cloud
+title Pronto: Bounded Context Map (DDD)
 skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam defaultTextAlignment center
+skinparam nodesep 40
+skinparam ranksep 50
 skinparam rectangle {
-  BackgroundColor #FFF3B0
-  BorderColor black
+  BackgroundColor #F2F2F2
+  BorderColor #555555
 }
 skinparam package {
-  BackgroundColor #BFD7F2
-  BorderColor #3A6EA5
-  FontStyle bold
+  BackgroundColor #FFFFFF
+  BorderColor #333333
 }
 
-package "Shared Kernel" {
-  rectangle Office
+package "Identity Context" as IC {
+  rectangle "User\n«Aggregate Root»" as User
+  rectangle "StudentProfile\n«Entity»" as StudentProfile
+  rectangle "Role\n«Value Object»" as Role
+  rectangle "Credentials\n«Value Object»" as Credentials
+  rectangle "UserFactory\n«Factory»" as UserFactory
+  UserFactory --> User : creates at\nregistration
+  User *-- StudentProfile
+  User -- Role
+  User -- Credentials
 }
 
-package "Booking Context" {
-  rectangle Appointment
-  rectangle Shift
-  rectangle Employee
-  rectangle TimeSlot
+package "Booking Context" as BC {
+  rectangle "BookingService\n«Domain Service»" as BookingService
+  rectangle "Appointment\n«Aggregate Root»" as Appointment
+  rectangle "EmployeeProfile\n«Aggregate Root»" as Employee
+  rectangle "Shift\n«Entity»" as Shift
+  rectangle "TimeSlot\n«Value Object»" as TimeSlot
+  rectangle "Office\n«Aggregate Root, Shared Kernel»" as Office
+  rectangle "AppointmentBooked\nAppointmentCancelled\n«Domain Event»" as BookingEvents
+  rectangle "NotificationService\n«Domain Service»" as NotificationService
 
-  Shift ..> TimeSlot : expands into
-  Appointment --> TimeSlot : occupies
+  BookingService --> Appointment : books, cancels,\ncompletes
   Appointment --> Employee : handled by
-  Shift --> Employee : declared by
+  Employee *-- Shift
+  Appointment *-- TimeSlot
+  Employee --> Office : works for
+  BookingService ..> BookingEvents : raises
+  BookingEvents ..> NotificationService : handled by
 }
 
-package "Support Context" {
-  rectangle Faq
-  rectangle Inquiry
-  rectangle Match
+package "Support Context" as SC {
+  rectangle "InquiryService\n«Application Service»" as InquiryService
+  rectangle "FaqMatchingService\n«Domain Service»" as Matching
+  rectangle "Inquiry\n«Aggregate Root»" as Inquiry
+  rectangle "Match\n«Value Object»" as Match
+  rectangle "Faq\n«Aggregate Root»" as Faq
+  rectangle "FaqIndex\n«Repository (derived)»" as FaqIndex
+  rectangle "FaqChanged\n«Domain Event»" as FaqChanged
 
-  Match --> Faq
-  Inquiry ..> Match : records
+  InquiryService -down-> Matching
+  InquiryService -down-> Inquiry : records
+  Matching -down-> Match : produces
+  Match -right-> Faq
+  Faq -down.> FaqChanged : raises
+  FaqChanged -left.> FaqIndex : keeps in step
 }
 
-package "Identity Context" {
-  rectangle User
-  rectangle Role
-  rectangle Credentials
-  rectangle StudentProfile
-
-  User --> Role
-  User --> Credentials
-  User --> StudentProfile
-}
-
-Appointment --> Office
-Employee --> Office : works for
-Faq --> Office : filed under
-Inquiry --> Office : asked about
-Appointment ..> Faq : suggested
-Appointment ..> User : booked by
-Employee ..> User : is
+BC ..> IC : Conformist\n(appointments and employees\nrefer to Identity's User)
+BC ..> SC : Customer/Supplier, one way\n(an appointment refers to the suggested FAQ)
+SC .. Office : Shared Kernel\n(FAQs and inquiries filed under an office)
 @enduml

@@ -1,41 +1,40 @@
 @startuml seq1
+skinparam shadowing false
 actor Student as student
 participant "Routes" as routes
+participant "InquiryService" as inq
 participant "FaqMatchingService" as faqsvc
 database "Database" as db
 database "Vector store" as vs
 
-student -> routes : POST /questions (office, question)
-routes -> faqsvc : match(office, question)
+student -> routes : POST /questions (question)
+routes -> inq : ask(question, language)
+inq -> faqsvc : findBestMatch(question, no office)
 
-faqsvc -> db : full-text search\nFAQs in office
-db --> faqsvc : best match (if rank ≥ threshold)
-opt no full-text match in office
+faqsvc -> db : full-text search over the\npublished FAQs of every office
+db --> faqsvc : best FAQ with rank ≥ threshold, or none
+opt no full-text match
   faqsvc -> faqsvc : embed question\n(local model)
-  faqsvc -> vs : similarity search\nFAQs in office
-  vs --> faqsvc : nearest FAQ (if similarity ≥ threshold)
+  faqsvc -> vs : nearest FAQ question in the same\nlanguage, among the published FAQs
+  vs --> faqsvc : FAQ and similarity
   note right of vs : store unreachable:\nerror logged,\nno semantic match
+  faqsvc -> faqsvc : keep it if similarity ≥ threshold
 end
+faqsvc --> inq : Match(FAQ, score, method) or none
 
-alt match found in office
-  faqsvc --> routes : Match(answer, office, score)
-else no match in office
-  faqsvc -> db : full-text search\nFAQs across all offices
-  db --> faqsvc : best match elsewhere (if any)
-  opt no full-text match elsewhere
-    faqsvc -> vs : similarity search\nFAQs across all offices
-    vs --> faqsvc : nearest FAQ elsewhere (if any)
-  end
-  faqsvc --> routes : Match(answer, actualOffice, score) or none
-end
+inq -> db : record inquiry\n(office of the FAQ, FAQ, score, method)
+inq --> routes : inquiry
+routes --> student : inquiry id, suggested answer,\noffice it belongs to
 
-routes -> db : record question\n(+ matched FAQ, method)
-routes --> student : suggested answer\n(+ correct office, if reassigned)
-
-alt answer resolves the request
-  student -> routes : mark as satisfactory
+alt the answer is satisfactory
+  student -> routes : POST /questions/{id}/resolve
+  routes -> inq : resolve(inquiry)
   note right : flow ends, no appointment created
-else not satisfactory (or no match at all)
-  student -> routes : book appointment\n(chosen or corrected office)
+else not satisfactory, or no match at all
+  student -> routes : GET /offices/{office}/availability?date
+  note right : office of the answer,\nor one picked from the list
+  routes --> student : free slots
+  student -> routes : POST /appointments\n(office, slot, question, suggested FAQ)
+  note right : see the concurrent booking diagram
 end
 @enduml

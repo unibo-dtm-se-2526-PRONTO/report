@@ -1,53 +1,48 @@
-@startuml components-diagram 
-
+@startuml components-diagram
 skinparam componentStyle rectangle
 skinparam shadowing false
 
-package "Presentation layer" {
-  [Single-Page Application] as SPA
+package "Presentation tier" {
+  [Single-page application] as SPA
   [Admin interface] as Admin
 }
 
-package "Logic layer" {
-
-  package "Application Layer" {
+package "Logic tier (backend)" {
+  package "Application layer" {
     [Routes]
-    [Services]
-    [Repositories]
+    [BookingService]
+    [InquiryService]
+    [FaqMatchingService]
     [NotificationService]
   }
-
-  package "Data Access Layer" {
-    [Object-Relational Mapper] as ORM
+  package "Data access layer" {
+    [Object-relational mapper] as ORM
     [Vector index] as VI
   }
-
-  [Routes] --> [Services]
-  [Services] --> [Repositories]
-  [Services] --> [NotificationService]
-  [Repositories] --> [ORM]
-  [Repositories] --> VI
 }
 
-interface "SMTP" as MailAPI
-[NotificationService] ..> MailAPI
-
-package "Data Layer" {
-  [Database]
-  [Vector store] as VS
+package "Data tier" {
+  database "Database" as DB
+  database "Vector store" as VS
 }
 
 interface "Application API" as API
-interface "Query interface" as Query
-interface "Similarity search" as Similarity
+interface "SMTP" as SMTP
 
-API - [Routes]
 SPA ..> API
-Admin ..> [Repositories]
-
-[Database] -up- Query
-VS -up- Similarity
-[ORM] ..> Query
-VI ..> Similarity
-
+API - [Routes]
+[Routes] --> [BookingService]
+[Routes] --> [InquiryService]
+[Routes] --> ORM : reads
+[InquiryService] --> [FaqMatchingService]
+[InquiryService] --> ORM
+[BookingService] --> ORM
+[BookingService] --> [NotificationService]
+[FaqMatchingService] --> ORM : full-text search
+[FaqMatchingService] --> VI : similarity search
+ORM ..> VI : FaqChanged\n(after commit)
+Admin --> ORM
+[NotificationService] ..> SMTP : after commit
+ORM --> DB
+VI --> VS
 @enduml

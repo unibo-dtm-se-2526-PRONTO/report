@@ -6,154 +6,156 @@ nav_order: 6
 
 # Validation
 
-## Testing approach
+## Table of contents
 
-We wrote the tests together with the code. The test layout of the backend was set up right after the Django project itself, before the first feature, and since then every feature commit carries the tests of the behaviour it adds: the booking service, full-text matching and the anonymiser, for instance, each arrived in the same commit as their tests. We did not follow strict TDD (writing each test before the code it checks), but we wrote the tests from the acceptance criteria of the [requirements](../02-requirements/index.md), and the docstring of each test file names the requirements it covers (e.g. `test_booking_notifications.py` covers FR13–FR15, `test_booking_concurrency.py` covers NFR1).
+- [Backend](#backend)
+  - [Testing approach](#testing-approach)
+    - [Automated testing tools](#automated-testing-tools)
+    - [Static analysis tools](#static-analysis-tools)
+    - [Test databases](#test-databases)
+    - [Test doubles](#test-doubles)
+  - [Testing (automated)](#testing-automated)
+    - [Unit testing](#unit-testing)
+    - [Integration testing](#integration-testing)
+    - [System testing](#system-testing)
+  - [Acceptance tests (manual)](#acceptance-tests-manual)
+- [Frontend](#frontend)
+  - [Testing approach](#testing-approach-1)
+  - [Testing (automated)](#testing-automated-1)
+    - [Unit testing](#unit-testing-1)
+    - [Integration testing](#integration-testing-1)
+    - [System testing](#system-testing-1)
+  - [Acceptance tests (manual)](#acceptance-tests-manual-1)
 
-Each test is named after the behaviour it checks, written as a sentence: `test_a_slot_disappears_when_every_employee_is_booked`, `test_a_failed_email_does_not_undo_the_booking`. Read one after the other, the names of a test file describe the rules of the component, and a failing test says which rule broke without opening it.
+## Backend
 
-A few rules hold across both suites:
+### Testing approach
 
-- **No test depends on the date it runs.** Backend tests build their dates relative to today (`next_working_day()` in `conftest.py` returns the next Monday), so the suite does not start failing once a hard-coded date is in the past. The frontend suite runs in the `Europe/Rome` time zone on every machine and freezes the clock where a test needs a fixed "now".
-- **No test reaches the network.** The frontend's `fetch` is always replaced by a mock, and a request that no test set up fails the test even if the application caught the error; the API base URL points to a reserved host that cannot resolve. In the backend, tests never reach a Chroma server or download the embedding model.
-- **Behaviour that only PostgreSQL has is tested on PostgreSQL.** Full-text search does not exist on SQLite, and SQLite locks the whole database on every write, so a concurrency test there would pass for the wrong reason. These tests are marked `@pytest.mark.postgres` and are skipped, with that reason in the report, unless the suite runs on PostgreSQL (see [Integration testing](#integration-testing)).
+We followed test-driven development (TDD) since the first feature: the test layout and a first health-check test were set up before the `accounts` app, and from then on each feature was developed together with its tests, writing a failing test first and then the code that makes it pass. All tests live in the `tests/` folder at the root of the repository, one file per app and topic (`test_accounts_*.py`, `test_booking_*.py`, `test_faq_*.py`, `test_offices_*.py`), with shared fixtures in `conftest.py`.
 
-**Frameworks.** The backend uses **pytest** with **pytest-django** and **coverage**. We preferred pytest to Django's own `unittest`-based runner because its fixtures compose: `conftest.py` defines once the cast that the booking tests share (an office, an employee working Monday to Friday from 9 to 17, a student, a future weekday), and each test asks only for what it needs. `parametrize` turns a list of inputs into separate tests (the anonymiser's 58 tests are mostly cases of a few rules), custom markers select the PostgreSQL-only tests, and pytest-django adds what a Django project needs: a test database, `settings` overrides, and `django_capture_on_commit_callbacks` to run the code that Django defers until a transaction commits.
+#### Automated testing tools
 
-The frontend uses **Vitest** with **Vue Test Utils** and **jsdom**. Vitest reuses the Vite configuration of the application, so single-file components, TypeScript and the `@/` import alias work in the tests with no separate build setup; jsdom gives the components a browser DOM, and Vue Test Utils mounts them and drives them as a user would (filling fields, clicking buttons).
+The tools are development dependencies declared in `pyproject.toml`:
 
-## Testing (automated)
+- **pytest**, with the **pytest-django** plugin, runs the tests: its fixtures make test data easy to share, and pytest-django gives each test a fresh database and the Django settings;
+- **coverage** measures which lines of the code the tests cover.
 
-The figures below come from a run on 28 October 2026 (backend at commit `e86ae95` of `develop`, frontend at commit `99a56f0`). Coverage of the backend counts the application code only: tests and migrations are excluded.
+They run with `poe test` and `poe coverage`.
 
-| Suite | Tests | Passed | Skipped / expected failures | Coverage |
-|---|---|---|---|---|
-| Backend, on PostgreSQL 16 | 468 | 468 | 0 | 98% of statements (1253, 22 not run) |
-| Backend, on SQLite | 468 | 439 | 29 skipped (marked `postgres`) | 97% of statements |
-| Frontend | 221 | 219 | 2 expected failures (known bugs, see below) | 99.7% statements, 97.4% branches, 98.8% functions, 100% lines |
 
-Both suites run in CI on every push and pull request (see [CI/CD](../08-cicd/index.md)). The backend's coverage is measured on the PostgreSQL run, the only one that reaches the FAQ matching. The frontend's CI fails if coverage drops below 95% of lines, statements and functions, or 90% of branches.
+#### Static analysis tools
 
-The two expected failures are tests that describe a known bug. They are written with Vitest's `it.fails`, so they pass while the bug is there and will fail, as a reminder to turn them into ordinary tests, once it is fixed:
+Static analysis checks the code without running it. Its tools are also declared in `pyproject.toml`:
 
-- signing out when the logout request fails leaves the user on a protected page with an unhandled error (`App.spec.ts`), because `signOut()` awaits a call that rethrows the failure and never reaches the redirect to the login page;
-- a registration error on a field the form does not show (such as DRF's `non_field_errors`) is stored as a field error, so the user sees no message at all (`RegisterView.spec.ts`).
+- **mypy** checks the type annotations;
+- **ruff** checks the code for errors and bad patterns (linting) and keeps its formatting consistent.
 
-The table below traces the requirements to the backend tests that check them. Some files cover more than one requirement; each is listed under its main one.
+`poe static-checks` runs both checks, and `poe format-check` verifies the formatting.
 
-| Requirement | Test files (backend) | Tests |
+#### Test databases
+
+The tests run on two databases. On a developer's machine they use a SQLite database by default: it needs no server, credentials or network, so the suite works on any machine with Python alone and the unit tests run in about half a minute, which keeps the TDD cycle short. SQLite is not the production engine, though: it has no full-text search and no real row locking. The tests that depend on them, such as full-text FAQ matching and concurrent bookings, are marked `postgres` and skipped on SQLite. 
+The CI runs the suite twice: first on SQLite, to check that it still passes with no database server, then on PostgreSQL 16.
+
+The switch happens in `pronto/settings.py`. The settings recognise a test run (pytest sets the `PYTEST_VERSION` environment variable) and, only in that case, replace the default database: if `TEST_DATABASE_URL` holds a `postgres://` URL they point to that PostgreSQL server, otherwise to SQLite in memory.
+
+#### Test doubles
+
+Together with the tests, test doubles were also implemented. They are all written by hand and installed with pytest's `monkeypatch`.
+
+**Fakes**: simplified but working versions of the external services. Chroma runs as an in-memory client (`chromadb.EphemeralClient`) instead of a server, and the embedding model is replaced by `fake_embed`, a small deterministic function, so that no model is downloaded and the similarities are known in advance. E-mails are collected in memory by Django's `locmem` backend, which also acts as a spy: the test reads the recipients, language and content of each message. In local runs, the in-memory SQLite database is itself a fake of PostgreSQL (see [Test databases](#test-databases)).
+
+**Stubs**: functions that return a fixed answer or raise an error, to drive the code down a chosen path. `StubMatcher` always returns the same match, to test the order of the full-text and semantic cascade. `smtp_is_down`, `store_down`, `model_unavailable` and `anonymise_then_fail` simulate a mail server, a vector store, a model or an import that fail, to check that the application handles the failure without losing data.
+
+
+### Testing (automated)
+
+#### Unit testing
+
+Unit tests call models, services and commands directly, without going through the HTTP API.
+
+The table reports the run on PostgreSQL, as in the CI. Coverage is measured by running the unit tests alone.
+
+| Module | Tests | What it covers | Requirements | Success rate | Coverage |
+|---|---|---|---|---|---|
+| `accounts/models.py` | 31 | user model with e-mail login and roles, password hashing, student profile with matricola and degree programme | FR1, FR2, FR3, NFR3 | 31/31 | 98% |
+| `accounts/admin.py` | 6 | creation of students and employees from the Django admin, search by matricola | FR3 | 6/6 | 97% |
+| `accounts` migrations | 3 | data migration that reactivates the users left inactive by the removed e-mail verification | FR1 | 3/3 | n/a |
+| `booking/models.py` | 17 | employee profiles, appointments, deletion rules, at most one booked appointment per employee and slot | FR8, FR9, NFR1 | 17/17 | 98% |
+| `booking/services.py` | 61 | shifts declared and withdrawn, available slots, booking with even assignment, cancellation and completion | FR4, FR5, FR8, FR9, FR10, FR11, FR12 | 61/61 | 99% |
+| `booking/notifications.py` | 16 | booking and cancellation e-mails, their language and content, failed e-mails that do not undo the booking | FR13, FR14, FR15 | 16/16 | 100% |
+| `faq/models.py` | 10 | bilingual FAQs, publication, ordering, deletion rules | FR7 | 10/10 | 95% |
+| `faq/matching.py` | 14 | full-text matching: stemming, language, threshold, search across offices | FR6, FR7 | 14/14 (13 on PostgreSQL only) | 99% |
+| `faq/vector_index.py`, `faq/signals.py` | 28 | indexing after each commit, rebuild, semantic search, fallback when Chroma is down | FR7 | 28/28 (3 on PostgreSQL only) | 86%, 100% |
+| `faq/anonymisation.py` | 58 | removal of e-mail addresses, student IDs, phone numbers, tax codes and names | NFR4 | 58/58 | 98% |
+| `faq/management/commands/import_faqs.py` | 37 | import of the FAQ spreadsheet: offices, missing translations, anonymisation, repeated imports | NFR4 | 37/37 | 99% |
+| `offices/models.py`, `offices/seed.py` | 8 | office codes and defaults, seeding of the offices | – | 8/8 | 100% |
+| `pronto/settings.py` | 3 | installed apps | – | 3/3 | 92% |
+| **Total** | **292** | | | **292/292** | **86%** |
+
+#### Integration testing
+
+Integration tests go through the HTTP API with the test client of Django REST Framework: each request crosses the routes (URL, authentication, permission check, serializer), the service, the ORM and the database, and the test checks both the response and the state left in the database.
+
+| Components | Tests | What it covers | Requirements | Success rate | Coverage |
+|---|---|---|---|---|---|
+| Routes → `accounts` → database | 72 | registration with the role given by the e-mail domain, login and logout with a token, the current user, passwords never returned | FR1, FR2, FR3, NFR3 | 72/72 | views 100%, serializers 100% |
+| Routes → BookingService → NotificationService | 29 | booking, appointments listed by role, cancellation and completion through the API, e-mails sent after the commit | FR3, FR8, FR11, FR12, FR13, FR14, FR15 | 29/29 | views 100%, serializers 100% |
+| Routes → offices and availability | 13 | office list in Italian and English, free slots of an office on a date | FR4, FR8 | 13/13 | views 100% |
+| Routes → BookingService (staff) | 20 | an employee chooses their office once, declares and withdraws shifts | FR2, FR4, FR5 | 20/20 | views 100% |
+| BookingService → PostgreSQL (concurrency) | 5 | simultaneous bookings, overlapping shifts, a shift withdrawn during a booking, a double cancellation, with real threads | FR9, FR15, NFR1 | 5/5 (PostgreSQL only) | services 93% |
+| Routes → FAQ catalogue | 12 | public FAQ list and detail, language, filter by office | FR7 | 12/12 | views 100% |
+| Routes → InquiryService → FaqMatchingService → PostgreSQL | 22 | a question is matched, recorded with its office and marked as resolved | FR6, FR7 | 22/22 (7 on PostgreSQL only) | services 100%, matching 82% |
+| Health check and PostgreSQL setup | 3 | health endpoint and version, text-search languages available on PostgreSQL | – | 3/3 | – |
+| **Total** | **176** | | | **176/176** | **77%** |
+
+Run together, unit and integration tests (468) all pass on PostgreSQL and cover 98% of the backend code.
+
+#### System testing
+
+We did not write automated end-to-end tests. The behaviour of the running application and the user experience are verified manually, as described in the next section.
+
+What is verified automatically at system level is the environment in which the application must run, through the CI/CD workflow in `.github/workflows/check.yml`:
+
+- the code is compiled and tested with Python 3.12 and the Poetry version pinned in the `Dockerfile`, the same ones that run the backend in its container;
+- the whole suite runs on PostgreSQL 16, in a service container built from the same image as Docker Compose, so the `postgres` tests run too;
+- on each push to `develop`, once both test runs pass, the migrations are applied to the shared Neon database with the runtime dependencies alone, and `migrate --check` confirms that none is left unapplied.
+
+Only then does the workflow call `.github/workflows/deploy.yml`, which publishes the release.
+
+Containers are what keep the test environment clean. In the CI, the PostgreSQL server is a service container created for each run and discarded at the end, so nothing is carried over from one run to the next. Locally, the same tests run against the `db` service of Docker Compose (`docker compose up -d --wait db`), on a `test_pronto` database that Django creates and drops at each run, apart from the development data.
+
+### Acceptance tests (manual)
+
+The acceptance criteria that describe what a user sees are checked by hand on the whole system.
+
+| Requirement | Steps | Expected result |
 |---|---|---|
-| FR1, FR2, NFR3: registration, login, passwords | `test_accounts_register`, `test_accounts_auth`, `test_accounts_models`, `test_accounts_admin`, `test_accounts_migrations` | 112 |
-| FR3: role-based access | role and ownership tests spread across `test_booking_appointments`, `test_booking_staff`, `test_faq_questions_api` (e.g. `test_only_students_ask`, `test_cancelling_someone_elses_appointment_is_not_found`) | (included in the rows of those files) |
-| FR4, FR5: shifts and availability | `test_booking_shifts`, `test_booking_staff`, `test_booking_offices` | 63 |
-| FR6, FR7, IR4: asking and FAQ matching | `test_faq_matching`, `test_faq_semantic`, `test_faq_questions_api`, `test_faq_api`, `test_faq_models` | 86 |
-| FR8, FR10, FR11, FR12: booking, distribution, lifecycle | `test_booking_services`, `test_booking_appointments`, `test_booking_models` | 75 |
-| FR9, NFR1: no double booking | `test_booking_constraints`, `test_booking_concurrency` (and the two race tests of `test_booking_services`, counted in the row above) | 7 |
-| FR13–FR15: e-mail notifications | `test_booking_notifications` | 16 |
-| NFR4: anonymisation | `test_faq_anonymisation`, `test_faq_import` | 95 |
-| NFR5, IR2: environment and setup | `test_postgres`, `test_project_setup`, `test_health`, `test_offices_models`, `test_offices_seed` | 14 |
+| AC1 | A student registers at `/register` with a `@studio.unibo.it` address, then logs in. | The account is created and the student lands on `/ask`. |
+| AC6, AC7 | A student asks a question in the textbox. | The answer is shown with its office. |
+| AC8, AC13 | A student says the answer did not help, picks a free slot and confirms. | The appointment is booked and a confirmation e-mail is sent to the student (this can be checked in the log of `docker compose logs -f backend`). |
+| AC3 | A student opens `/bookings`. | Only the student's own appointments are listed. |
+| AC11 | A student cancels a future appointment from `/bookings`. | The appointment is shown as cancelled and the slot is free again. |
+| AC2 | An employee registers at `/register` with a `@unibo.it` address, logs in and chooses an office at `/profile`. | The account is created and the employee lands on `/queue`. |
+| AC4 | An employee declares a shift at `/availability`, e.g. Monday 9:00–12:00. | The shift is saved and students see 30-minute slots covering it. |
+| AC5 | An employee withdraws the shift. | The shift disappears and its slots are no longer offered to students. |
+| AC3, AC14 | An employee opens `/queue` after a student has booked with them. | The appointment is listed with the student's question, and a notification e-mail was sent to the employee. |
+| AC12 | An employee marks an appointment that has started as completed in `/queue`. | The appointment is shown as completed. |
+| AC9, AC16 | Two students, logged in in two browser windows, reach the confirmation of the same slot, which only one employee covers, and confirm at the same moment. | One booking succeeds; the other is rejected because the slot is no longer available. The employee has a single appointment in that slot. |
+| AC6, AC7 | A student asks two questions about the same FAQ: one with the FAQ's own words, one reworded with different words. An administrator then opens the questions in the Django admin (`/admin/faq/inquiry/`). | Both questions are matched to that FAQ; the column "found with" shows "full-text search" for the first and "semantic similarity" for the second. |
 
-On the frontend, the same requirements are covered from the user's side: registration and login (`RegisterView`, `LoginView`, `auth-store`), role guards (`router`, 30 tests), asking and confirming an answer (`AskView`, `ConfirmView`), slots and bookings (`SlotsView`, `BookingsView`, `booking-store`), shifts and the employee queue (`AvailabilityView`, `ProfileView`, `QueueView`).
+Success rate: 12/12.
 
-### Unit testing
+## Frontend
 
-The units we test in isolation are the domain rules and the pure functions:
+### Testing approach
 
-- **Anonymisation** (`faq/anonymisation.py`, 58 tests). Each kind of personal data has its own tests: a personal e-mail address is replaced, an institutional office mailbox is kept, a subdomain of the institutional domain is not; matricole, phone numbers, tax codes, and names introduced by an honorific, a self-introduction or a sign-off are replaced. Two further tests check that ordinary text is left alone and that anonymising twice changes nothing more.
-- **Booking rules** (`booking/services.py`, 31 + 30 tests in `test_booking_services` and `test_booking_shifts`). These tests call the services directly, with no HTTP and no serializers, and pin down when a slot exists, who gets a booking and when a transition is allowed: slots follow the office's slot duration and the employees' shifts, a slot stays available while one employee is free and disappears when all of them are booked, consecutive bookings are spread evenly (FR10), a booking outside a shift, in the past or off the slot grid is refused, and only a booked appointment that has not started can be cancelled.
-- **Matchers** (`faq/matching.py`). `SemanticMatcher` and `CascadeMatcher` are tested one at a time: the first matcher that finds an answer wins, the next is asked only when one finds nothing, and the cascade finds nothing only when no matcher does.
-- **Models and constraints**: uniqueness of e-mails and matricole, required names, what may and may not be deleted, and the partial unique constraint behind FR9 (`test_booking_constraints`: an employee cannot hold two booked appointments on one slot, while a cancelled one does not block it).
+### Testing (automated)
 
-Model and service tests do use the test database. We chose not to mock the ORM there, because several rules (uniqueness, protected deletion, the booking constraint) are enforced by the database itself, and a mock would only repeat what the test assumes.
+#### Unit testing
 
-On the frontend, the unit tests cover the date and time formatting (`format`), the translation module (`i18n`), the HTTP client (`client`: base URL, token header, error handling), the endpoint functions (`endpoints`: each one sends the method, path, query and body the backend expects), the three Pinia stores and the two shared components.
+#### Integration testing
 
-### Integration testing
+#### System testing
 
-We tested the following components together.
-
-**API, services and database.** The endpoint tests go through the whole backend stack with DRF's `APIClient`: URL routing, token authentication, permission classes, serializers, services and the ORM. They check what a client sees: status codes, response bodies, the language of the response, and that data is scoped to its owner (`test_an_employee_does_not_see_a_colleagues_appointments`). The booking rules themselves are tested once, in the services; the endpoint tests only check that the API applies them and maps their errors to the right response.
-
-**Matching and PostgreSQL full-text search** (`test_faq_matching`, 14 tests). These run on a real PostgreSQL database with the `italian` and `english` configurations: Italian words are matched by their stem, a question made only of stop words matches nothing, an unpublished FAQ is never suggested, a good-enough match in the chosen office wins over a better one elsewhere, and a score equal to the threshold counts as a match. `test_postgres` checks that the PostgreSQL run really is one, with both text-search configurations installed.
-
-**Concurrent bookings and PostgreSQL** (`test_booking_concurrency`, 5 tests). Several threads call the same service at the same moment, each on its own database connection and in its own transaction, as simultaneous HTTP requests would: a barrier releases them together so that their calls overlap. The tests use `transaction=True`, since the usual test transaction would hide each thread's writes from the others. They check that simultaneous bookings never give one employee two appointments on the same slot, that two overlapping shifts declared at once are not both accepted, that a shift withdrawn during a booking leaves no appointment outside a shift (and cannot be withdrawn under a booking not yet committed), and that two simultaneous cancellations send the e-mails only once.
-
-**Booking and notifications** (`test_booking_notifications`, 16 tests). The e-mails go out once the transaction commits, so the tests capture Django's on-commit callbacks and read the sent messages from the test mail outbox. They check that each transition sends exactly one e-mail to each recipient listed in FR13–FR15, with office, time and question; that the student is written to in the language of their question and the employee in Italian; that a booking rolled back sends nothing; and that a failed e-mail neither undoes the booking nor stops the other e-mail.
-
-**FAQ, vector index and Chroma** (`test_faq_semantic`, 28 tests). A published FAQ is indexed in both languages after the commit and not before, unpublishing or deleting it removes it, editing it updates its entry, a FAQ is still saved when the vector store is down, and `rebuild_faq_index` rebuilds the index from the database, keeping the entries it had if it fails halfway. The end-to-end cases of the cascade (full-text first, semantic search for what full-text misses) run on PostgreSQL.
-
-**FAQ import** (`test_faq_import`, 37 tests). The `import_faqs` command is run on real `.xlsx` files written by the tests: questions and answers are anonymised in both languages, imported FAQs stay unpublished until reviewed, running the import twice creates nothing new, and a choice made in the admin (a published FAQ, an English text written by hand) survives a later import. A failure halfway leaves the database as it was.
-
-**Frontend views, stores and router.** Each view is mounted with its real store and router and a mocked backend, and driven as a user would: the tests fill the form, submit it, and check both the request the view sent and what it shows for each possible response, errors included.
-
-**Test doubles.** We replaced a component only where the real one is slow, external or cannot be made to fail on demand:
-
-| Double | Kind | Replaces | Why |
-|---|---|---|---|
-| Django's in-memory mail backend (`mail.outbox`) | fake | the SMTP server | e-mails are read back and counted, nothing is delivered |
-| `chromadb.EphemeralClient` | fake | the Chroma server | the real Chroma library, in memory, with no server to start |
-| `fake_embed` | fake | the embedding model | a small dictionary of synonyms ("certificato", "attestato") is enough to tell a question worded differently from an unrelated one; how well the real model does that is a matter of calibration, checked on the real dataset |
-| `store_down`, `model_unavailable`, `smtp_is_down` | stubs | the vector store, the model, `send_mail` | they raise the error of an unreachable service, to test the fallbacks |
-| `lose_the_first_pick_to` | stub | the employee selection | it books the chosen employee for a rival just before the insertion, so the retry with a colleague can be tested on SQLite, one request at a time |
-| `mockApi()` | fake and spy | the backend, behind `fetch` | it answers by method and path and records every request, so tests assert on what the application sent |
-| `freezeTime()` | fake | the system clock | dates such as "today" and "already started" stay fixed |
-
-PostgreSQL is never replaced by a double: the tests that need it run on a real PostgreSQL server.
-
-### System testing
-
-On the frontend, `flows.spec.ts` runs whole journeys through the real application: `App.vue`, the real router with its guard and lazy-loaded pages, and the real stores, with only the backend mocked. It covers three journeys that follow the acceptance criteria of the main user stories:
-
-- a student signs in, asks a question, gets no answer, books a slot and finds it among their bookings (US2a, US2d, FR8);
-- a student is kept out of the employee pages (FR3);
-- an employee signs in to their queue and signs out again.
-
-On the backend, the endpoint tests already treat the backend as a black box reached over HTTP, and the concurrency tests reproduce the situation of NFR1 with real concurrent transactions.
-
-No automated test drives a browser against the real backend. The contract between the two is checked from both sides instead: the frontend types in `src/api/types.ts` mirror the backend serializers and are checked by `vue-tsc`, `endpoints.spec.ts` checks the requests the frontend sends, and the backend's endpoint tests check the responses those requests get. The full journey across the two runs in the manual acceptance tests below.
-
-**Containers.** The backend's PostgreSQL tests run on the `postgres:16` image, the same one Docker Compose uses for the `db` service. In CI it is a service container started by GitHub Actions for the test job, with a health check, so every run starts from an empty database. Locally a developer starts the same container and points the suite at it:
-
-```bash
-docker compose up -d --wait db
-TEST_DATABASE_URL=postgres://pronto:pronto@localhost:5432/pronto?sslmode=disable \
-    poetry run poe test
-```
-
-Django creates its own `test_pronto` database on that server and drops it at the end, so the data of the development database is never touched. The frontend suite needs no container; CI runs it on Linux, Windows and macOS with Node 20, 22 and 24.
-
-## Acceptance tests (manual)
-
-The manual tests run the whole system as its users would, through the browser, and follow the acceptance criteria of the requirements.
-
-**Setup.** From the backend repository, with the frontend repository next to it:
-
-```bash
-docker compose up --build
-docker compose exec backend python manage.py seed_offices
-docker compose exec backend python manage.py import_faqs <helpdesk-export>.xlsx --publish
-docker compose exec backend python manage.py rebuild_faq_index
-docker compose exec backend python manage.py createsuperuser
-```
-
-The application is at <http://localhost:5173> and the admin at <http://localhost:8000/admin/>. E-mails are printed by the backend, and `docker compose logs -f backend` shows them. The tests need one student account (`@studio.unibo.it`), two employee accounts (`@unibo.it`) working for the same office, and the administrator; the tests marked "two browsers" use a second browser or a private window, so that two users are signed in at once.
-
-| # | Requirement | Steps | Expected result |
-|---|---|---|---|
-| AT1 | FR1, FR2 | Register a student, an employee, and a user with a `@gmail.com` address. | The first two accounts are created and can sign in at once; the third is refused. |
-| AT2 | FR2, FR4 | Sign in as each employee, choose the office, declare a shift (e.g. Monday 9:00–12:00). Try to choose the office again. | The shift is listed; choosing the office a second time is refused. |
-| AT3 | FR4, FR5 | As the student, open that office's availability for the Monday. As one employee, withdraw the shift, then reload the student's page. | The slots cover 9:00–12:00 in steps of the office's slot duration; after the withdrawal they are gone, unless the other employee still covers them. |
-| AT4 | FR6, FR7 | As the student, ask a question taken from an imported FAQ, worded differently. | The matching answer is shown. |
-| AT5 | FR7 | Ask a question that belongs to another office. | The answer is shown together with the office it belongs to. |
-| AT6 | FR8 | Ask an unrelated question, or reject the suggested answer, then book a slot. | The appointment is listed as booked, with the question attached. |
-| AT7 | FR8 | Ask a question and mark the answer as satisfactory. | The flow ends; no appointment is created. |
-| AT8 | FR10 | Book two consecutive slots as the student. | Each employee of the office receives one appointment. |
-| AT9 | FR9 (two browsers) | Sign in as two students and book the same slot at the same time; then book it a third time. | The first two bookings go to different employees; the third is refused, and the slot is no longer offered. |
-| AT10 | FR13, FR14 | Check the backend log after AT6. | One e-mail to the student, in the language of the question, and one to the employee, in Italian, with the question and the FAQ that did not help. |
-| AT11 | FR11, FR15 | Cancel a booking as the student, another as the employee, and a third as the administrator. The administrator has no page in the application, so they sign in through the API (`POST /api/auth/login/`) and call `POST /api/appointments/<id>/cancel/` with the token they receive. | Each is cancelled and its slot is offered again; the e-mail goes to the employee, to the student, and to both, respectively. |
-| AT12 | FR12 | As the employee, try to complete an appointment that has not started; complete one whose slot has started. | The first is refused; the second becomes completed, and no e-mail is sent. |
-| AT13 | FR3 | As the student, open an employee page by typing its URL. Sign in as the administrator in the application. | The student is sent back to their own home page; the administrator is sent to the Django admin. |
-| AT14 | NFR4 | In the admin, open the FAQs imported without `--publish`. | They are unpublished, and the personal data in their text is replaced by placeholders. |
-| AT15 | IR4 | Stop the Chroma container (`docker compose stop chroma`) and ask the question of AT4 again. | The student still gets an answer from full-text search, or the way to book; the backend logs the error. |
-
-<!-- Results: fill in the date of the last run and the outcome of each test (e.g. "15/15 passed on DD/MM/2026"). -->
+### Acceptance tests (manual)

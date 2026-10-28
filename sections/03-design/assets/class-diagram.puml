@@ -1,5 +1,6 @@
 @startuml class-diagram
 skinparam classAttributeIconSize 0
+skinparam shadowing false
 hide empty members
 
 package "Identity Context" {
@@ -11,72 +12,64 @@ package "Identity Context" {
     role : Role
     isActive : bool
     credentials : Credentials
-    authenticate(password) : bool
-    deactivate()
   }
-
   enum Role <<value object>> {
     STUDENT
     EMPLOYEE
     ADMIN
   }
-
   class Credentials <<value object>> {
     passwordHash : string
-    lastLogin : datetime
+    lastLogin : datetime [0..1]
   }
-
-  class StudentProfile <<value object>> {
+  class StudentProfile <<entity>> {
     matricola : string
     degreeProgramme : string
   }
 }
 
-package "Shared Kernel" {
-  class Office <<entity>> {
+package "Booking Context" {
+  class Office <<aggregate root, shared kernel>> {
     id : int
     code : string
-    name : string
+    name : string [it, en]
     contactEmail : string
     slotDurationMinutes : int
     isActive : bool
   }
-}
-
-package "Booking Context" {
+  enum Language <<value object, shared kernel>> {
+    IT
+    EN
+  }
+  class EmployeeProfile <<aggregate root>> {
+    id : int
+  }
+  class Shift <<entity>> {
+    id : int
+    weekday : Weekday
+    startTime : time
+    endTime : time
+  }
+  enum Weekday <<value object>> {
+    MONDAY
+    ...
+    SUNDAY
+  }
   class Appointment <<aggregate root>> {
     id : int
     status : AppointmentStatus
     slot : TimeSlot
     questionText : string
-    questionLanguage : string
-    book()
-    cancel(by)
-    complete()
+    questionLanguage : Language
+    createdAt : datetime
   }
-
   class TimeSlot <<value object>> {
     start : datetime
-    durationMinutes : int
   }
-
   enum AppointmentStatus <<value object>> {
     BOOKED
     CANCELLED
     COMPLETED
-  }
-
-  class Employee <<entity>> {
-    id : int
-  }
-
-  class Shift <<aggregate root>> {
-    id : int
-    weekday : Weekday
-    startTime : time
-    endTime : time
-    declare()
-    withdraw()
   }
 }
 
@@ -87,23 +80,20 @@ package "Support Context" {
     answer : string [it, en]
     isActive : bool
   }
-
   class Inquiry <<aggregate root>> {
     id : UUID
     text : string
-    language : string
-    score : float
-    matchedBy : MatchMethod
+    language : Language
+    score : float [0..1]
+    matchedBy : MatchMethod [0..1]
     resolved : bool
-    resolve()
+    createdAt : datetime
   }
-
   class Match <<value object>> {
     faq : Faq
     score : float
     matchedBy : MatchMethod
   }
-
   enum MatchMethod <<value object>> {
     FULL_TEXT
     SEMANTIC
@@ -111,16 +101,16 @@ package "Support Context" {
 }
 
 User "1" *-- "0..1" StudentProfile
+EmployeeProfile "0..1" --> "1" User : is
+EmployeeProfile "*" --> "1" Office : worksFor
+EmployeeProfile "1" *-- "*" Shift
 Appointment "1" *-- "1" TimeSlot
 Appointment "*" --> "1" Office : at
 Appointment "*" --> "1" User : bookedBy
-Appointment "*" --> "1" Employee : handledBy
+Appointment "*" --> "1" EmployeeProfile : handledBy
 Appointment "*" --> "0..1" Faq : suggestedFaq
-Employee "0..1" --> "1" User : is
-Employee "*" --> "1" Office : worksFor
-Shift "*" --> "1" Employee : declaredBy
 Faq "*" --> "1" Office : filedUnder
-Inquiry "*" --> "1" Office : askedAbout
+Inquiry "*" --> "0..1" Office : filedUnder
 Inquiry "*" --> "0..1" Faq : matchedFaq
 Match "*" --> "1" Faq
 @enduml
