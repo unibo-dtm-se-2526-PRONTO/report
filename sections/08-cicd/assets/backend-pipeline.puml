@@ -1,0 +1,48 @@
+@startuml backend-pipeline
+
+skinparam shadowing false
+skinparam defaultTextAlignment center
+
+start
+:push or pull request;
+fork
+  :**Preliminary Checks**
+  compile, Ruff, mypy,
+  format check,
+  tests on SQLite;
+  :**Test on PostgreSQL**
+  postgres:16 service container,
+  tests with coverage,
+  coverage report uploaded;
+  fork
+    if (push to develop?) then (yes)
+      :**Migrate the Neon database**
+      environment "neon",
+      migrate ~--plan, migrate, migrate ~--check;
+    else (no)
+    endif
+  fork again
+    :**Release** (deploy.yml)
+    semantic-release;
+    if (push to master?) then (yes)
+      :new version, changelog,
+      package on TestPyPI / PyPI,
+      GitHub release, tag;
+    else (no)
+      :dry run:
+      nothing is published;
+    endif
+  end fork
+fork again
+  if (pull request?) then (yes)
+    if (from develop?) then (no)
+      :**Conventional Commits**
+      commitlint on every commit;
+    else (yes)
+    endif
+  else (no)
+  endif
+end fork
+stop
+
+@enduml
