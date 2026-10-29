@@ -43,7 +43,7 @@ Version `1.0.0` was the first release with a stable API. The rules that map our 
 
 As described in the CI/CD section, the release job updates the version number and the changelog, publishes the new version, and creates its Git tag and its GitHub release, so nobody creates tags or releases by hand. The job runs on every push to the release branch (`master` in the backend, `main` in the frontend), in practice every merge of `develop`, once the tests have passed. On any other branch it only performs a dry run.
 
-A push does not always produce a release. semantic-release reads the commits added since the last tag and, because they follow Conventional Commits (see the Development section), derives the increment from their types. When the commits call for different levels, the highest one applies:
+A push does not always produce a release. semantic-release reads the commits added since the last tag and, because they follow Conventional Commits, derives the increment from their types. When the commits call for different levels, the highest one applies:
 
 - a breaking commit, marked with `!` after the type (`feat!: ...`) or with a `BREAKING CHANGE:` footer, increments `MAJOR`;
 - a `feat` commit increments `MINOR`;

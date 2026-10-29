@@ -6,11 +6,13 @@ nav_order: 9
 
 # CI/CD
 
-Both code repositories, backend and frontend, are checked, tested and released by GitHub Actions workflows stored in `.github/workflows/`. Actions are split into four workflows: `check.yml`, `commitlint.yml` , `deploy.yml`, `dependabot-automerge.yml` .
+Both code repositories, backend and frontend, are checked, tested and released by GitHub Actions workflows stored in `.github/workflows/`. 
+
+### BACKEND 
+
+Actions are split into four workflows: `check.yml`, `commitlint.yml` , `deploy.yml`, `dependabot-automerge.yml` .
 
 ## Automated Actions
-
-### Backend
 
 | Action | Workflow | Job | Triggers | Description | Reason |
 |---|---|---|---|---|---|
