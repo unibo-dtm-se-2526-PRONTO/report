@@ -1,0 +1,38 @@
+@startuml deployment-protocols
+
+skinparam shadowing false
+left to right direction
+
+node "User device" as device {
+  node "Web browser" as browser {
+    artifact "Vue SPA" as spa
+  }
+}
+
+node "Frontend host" as fronthost {
+  artifact "Static bundle\n(built by Vite)" as bundle
+}
+
+node "Application server" as appserver {
+  node "Django + DRF" as backend {
+    artifact "pronto backend" as app
+  }
+}
+
+database "PostgreSQL 16\n:5432" as pg
+node "Chroma 1.5\n:8000" as chroma
+node "Mail server\n:587" as mail
+
+bundle ..> spa : HTTP(S)\nHTML, JS, CSS
+spa --> app : HTTP(S), REST\nJSON bodies\nAuthorization: Token <key>
+app --> pg : PostgreSQL wire protocol\nover TCP (psycopg)
+app --> chroma : HTTP API\n(chromadb client)
+app --> mail : SMTP + TLS
+
+note bottom of mail
+  Used only when EMAIL_BACKEND selects
+  the SMTP backend; in development the
+  e-mails are printed to the console.
+end note
+
+@enduml
