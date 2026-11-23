@@ -1,10 +1,10 @@
 ---
-title: Self-evaluation
+title: Self-Evaluation
 has_children: false
 nav_order: 12
 ---
 
-# Self-evaluation
+# Self-Evaluation
 
 - An individual section is required for each member of the group
 - Each member must self-evaluate their work, listing the strengths and weaknesses of the product
