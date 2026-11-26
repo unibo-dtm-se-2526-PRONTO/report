@@ -1,0 +1,48 @@
+@startuml components-diagram
+skinparam componentStyle rectangle
+skinparam shadowing false
+
+package "Presentation tier" {
+  [Single-page application] as SPA
+  [Admin interface] as Admin
+}
+
+package "Logic tier (backend)" {
+  package "Application layer" {
+    [Routes]
+    [BookingService]
+    [InquiryService]
+    [FaqMatchingService]
+    [NotificationService]
+  }
+  package "Data access layer" {
+    [Object-relational mapper] as ORM
+    [Vector index] as VI
+  }
+}
+
+package "Data tier" {
+  database "Database" as DB
+  database "Vector store" as VS
+}
+
+interface "Application API" as API
+interface "SMTP" as SMTP
+
+SPA ..> API
+API - [Routes]
+[Routes] --> [BookingService]
+[Routes] --> [InquiryService]
+[Routes] --> ORM : reads
+[InquiryService] --> [FaqMatchingService]
+[InquiryService] --> ORM
+[BookingService] --> ORM
+[BookingService] --> [NotificationService]
+[FaqMatchingService] --> ORM : full-text search
+[FaqMatchingService] --> VI : similarity search
+ORM ..> VI : FaqChanged\n(after commit)
+Admin --> ORM
+[NotificationService] ..> SMTP : after commit
+ORM --> DB
+VI --> VS
+@enduml
